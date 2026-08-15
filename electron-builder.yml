@@ -1,5 +1,7 @@
 appId: dev.gittree.app
 productName: git-tree
+copyright: Copyright (c) 2026 Khur Boon Kgim
+artifactName: ${name}-${version}-${os}-${arch}.${ext}
 directories:
   buildResources: build
   output: release
@@ -12,8 +14,13 @@ linux:
   target: [AppImage, deb]
   category: Development
   synopsis: View-only diff viewer for local Git repositories
-  # Debian requires a maintainer. Replace this before publishing a .deb.
-  maintainer: git-tree <maintainer@example.invalid>
+  # Debian requires a maintainer field with a syntactically valid address.
+  maintainer: Khur Boon Kgim <boonkgim@users.noreply.github.com>
+  vendor: Khur Boon Kgim
+  description: >-
+    A view-only desktop viewer for the history and diffs of a local Git repository.
+    Four panels — commit graph, changed files, commit metadata and diff. It never
+    writes to your working tree, index or object store.
 win:
   target: [nsis]
 mac:

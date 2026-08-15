@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a change to git-tree
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Some things are deliberately out of scope: **any write operation** (staging, committing,
+        checkout, discard, stash, fetch, push), network or hosting-provider integration,
+        telemetry, and syntax highlighting. The reasoning is in the README's
+        "Design decisions" section. Suggestions to revisit those are welcome, but please argue
+        against the reasoning that is already there.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that git-tree makes hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like instead
+      description: If it affects the UI, say which panel and what appears there.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: read-only
+    attributes:
+      label: Read-only check
+      options:
+        - label: This does not require git-tree to write to a repository.
+          required: true

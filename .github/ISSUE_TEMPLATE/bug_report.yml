@@ -1,0 +1,81 @@
+name: Bug report
+description: Something in git-tree behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If git-tree **wrote to your repository** in any way, that is a security issue —
+        please report it privately through
+        [Security → Report a vulnerability](https://github.com/boonkgim/git-tree/security/advisories/new)
+        instead of here.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a repository with …
+        2. Select …
+        3. The diff panel shows …
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: git-tree version
+      description: From the About dialog, or the release you downloaded, or the commit you built.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - Windows
+        - macOS
+    validations:
+      required: true
+
+  - type: input
+    id: git-version
+    attributes:
+      label: Git version
+      description: Output of `git --version`.
+      placeholder: "git version 2.43.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repo-shape
+    attributes:
+      label: Repository shape
+      description: >
+        Most bugs here depend on what the repository looks like rather than on the file
+        contents. Anything unusual is worth mentioning: very large history, shallow clone,
+        linked worktree, submodules, detached HEAD, SHA-256 object format, merge commits with
+        many parents, unmerged paths, filenames with spaces or non-UTF-8 bytes, symlinks,
+        binary files.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error message or console output
+      description: Any message the app showed, or output from the developer console.
+      render: text
+    validations:
+      required: false

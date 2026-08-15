@@ -1,5 +1,9 @@
 # git-tree
 
+[![CI](https://github.com/boonkgim/git-tree/actions/workflows/ci.yml/badge.svg)](https://github.com/boonkgim/git-tree/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
+
 A desktop viewer for the history and diffs of a local Git repository. Four panels — commit
 graph, changed files, commit metadata, diff — laid out like SourceTree.
 
@@ -58,8 +62,9 @@ npm run build:mac     # .dmg              -> release/
 npm run build:all     # all three
 ```
 
-Two things to set before publishing: the `.deb` `maintainer` in `electron-builder.yml` is a
-placeholder, and no application icon is bundled, so the packaged app uses Electron's default.
+One thing is still outstanding before publishing binaries: no application icon is bundled, so
+the packaged app uses Electron's default. Builds are also unsigned — macOS and Windows will
+warn about an unidentified developer.
 
 electron-builder only cross-builds so far in practice: Windows and macOS targets are best built
 on their own platforms (macOS in particular requires macOS for signing). Linux was the platform
@@ -244,3 +249,31 @@ npm test
   built as a shell string — but Windows and macOS builds have not been exercised here. The one
   place worth watching is the untracked-file diff, which relies on git accepting `/dev/null` as
   a path under `--no-index`; that is a documented git idiom on Windows too, but untested.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, what
+a good change looks like, and the one invariant that is not negotiable — git-tree never writes
+to a repository, and that is enforced by an allowlist in `src/main/git/exec.ts` rather than by
+convention.
+
+The gaps most worth filling are in "Known limitations" above: the Windows and macOS builds have
+not been exercised on their own platforms, and there is no application icon.
+
+Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+git-tree is built to be safe to point at a repository you do not trust. If you find a way to
+make it write to a repository, run a program from repository configuration, or reach the
+filesystem from the renderer, please report it privately — see [SECURITY.md](SECURITY.md).
+
+## Licence
+
+[MIT](LICENSE). Copyright (c) 2026 Khur Boon Kgim.
+
+`docs/01-sourcetree.png` and `docs/01-sourcetree-cropped.png` are screenshots of Atlassian
+SourceTree, included only as the layout reference the brief pointed at. They are not covered by
+this licence and remain the property of their owner.

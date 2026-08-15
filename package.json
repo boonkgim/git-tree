@@ -2,11 +2,33 @@
   "name": "git-tree",
   "version": "0.1.0",
   "description": "A view-only desktop viewer for diffs in a local Git repository",
+  "keywords": [
+    "git",
+    "diff",
+    "diff-viewer",
+    "git-history",
+    "commit-graph",
+    "electron",
+    "desktop",
+    "read-only",
+    "sourcetree"
+  ],
+  "homepage": "https://github.com/boonkgim/git-tree#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/boonkgim/git-tree.git"
+  },
+  "bugs": {
+    "url": "https://github.com/boonkgim/git-tree/issues"
+  },
   "main": "./out/main/index.js",
-  "author": "git-tree",
+  "author": "Khur Boon Kgim (https://github.com/boonkgim)",
   "license": "MIT",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "start": "electron-vite preview",

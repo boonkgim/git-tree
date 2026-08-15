@@ -44,7 +44,7 @@ describe('parseLogRecords', () => {
   const record = logRecord([
     'd3065a19c29ec4c2d70e2b17ebf94cc5bae98594',
     '49ac405ed9a94e0a53fa184d04f1145081f2f8c5',
-    'Khur Boon Kgim',
+    'Ada Lovelace',
     'ada@example.com',
     '2026-08-15T07:22:08+08:00',
     '2026-08-15T07:22:08+08:00',
@@ -56,7 +56,7 @@ describe('parseLogRecords', () => {
     const [commit] = parseLogRecords(`${record}${NUL}`)
     expect(commit.sha).toBe('d3065a19c29ec4c2d70e2b17ebf94cc5bae98594')
     expect(commit.parents).toEqual(['49ac405ed9a94e0a53fa184d04f1145081f2f8c5'])
-    expect(commit.authorName).toBe('Khur Boon Kgim')
+    expect(commit.authorName).toBe('Ada Lovelace')
     expect(commit.subject).toBe('Add build prompt for the git-tree app')
     expect(commit.refs).toEqual([{ name: 'main', kind: 'branch', isHead: true }])
   })

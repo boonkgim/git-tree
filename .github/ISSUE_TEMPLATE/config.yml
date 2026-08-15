@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/boonkgim/git-tree/security/advisories/new
+    about: Report privately, not as a public issue. See SECURITY.md for what counts.
+  - name: Question or idea
+    url: https://github.com/boonkgim/git-tree/discussions
+    about: For anything that is not a specific bug or a concrete proposal.
