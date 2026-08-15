@@ -61,15 +61,19 @@ function initialRepo(argv: string[]): string | null {
  * non-flag argument is tested, the entry script is skipped, and the first thing
  * that actually exists on disk wins.
  */
-function repoFromArgv(argv: string[], allowPositional = true): string | null {
+function repoFromArgv(
+  argv: string[],
+  allowPositional = true,
+  cwd: string = process.cwd()
+): string | null {
   const entry = argv.find((a) => a.endsWith('.js') || a.endsWith('.cjs') || a.endsWith('.mjs'))
   for (const arg of argv.slice(1)) {
-    if (arg.startsWith('--repo=')) return arg.slice('--repo='.length)
+    if (arg.startsWith('--repo=')) return path.resolve(cwd, arg.slice('--repo='.length))
     if (arg.startsWith('-')) continue
     if (!allowPositional) continue
     if (arg === entry) continue
-    if (arg === '.') return process.cwd()
-    const resolved = path.resolve(arg)
+    if (arg === '.') return cwd
+    const resolved = path.resolve(cwd, arg)
     if (existsSync(resolved)) return resolved
   }
   return null
@@ -218,8 +222,12 @@ function buildMenu(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', (_event, argv) => {
-    const repo = repoFromArgv(argv)
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    // Relative paths in argv belong to the *second* process, not this one, so
+    // they must resolve against the directory it was launched from. Electron
+    // hands that over as `workingDirectory`; without it `git-tree .` silently
+    // reopens whatever repository this instance was started in.
+    const repo = repoFromArgv(argv, true, workingDirectory || process.cwd())
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
