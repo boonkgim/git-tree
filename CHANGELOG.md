@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A command-line launcher: `/usr/bin/git-tree` now points at a wrapper that starts the app in
+  its own session, so running `git-tree .` in a terminal returns to the prompt instead of
+  holding the shell until the window is closed. Applies to the `.deb`; the AppImage, being a
+  single portable file, is unchanged.
+- An application icon (`build/icon.svg`, rasterised to `build/icons/`): the commit graph the app
+  draws, in its own lane colours. Linux packages now install the full hicolor set, and the
+  desktop entry carries `Keywords` so the app is findable by "git" or "diff" in a launcher.
 - Open-source project files: `LICENSE` (MIT), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
   `SECURITY.md`, issue and pull-request templates, and a GitHub Actions workflow running
   typecheck and tests on Linux, Windows and macOS.

@@ -60,7 +60,6 @@ node_modules/
 !.yarn/versions
 .pnp.*
 dist/
-build/
 out/
 .next/
 .nuxt/
@@ -102,6 +101,8 @@ vendor/
 
 # ---- git-tree ----
 release/
+# Note: build/ is deliberately NOT ignored. It is electron-builder's
+# buildResources directory (the application icons), not build output.
 
 # ---- Build / infra ----
 *.tfstate

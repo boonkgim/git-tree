@@ -12,7 +12,17 @@ files:
 asar: true
 linux:
   target: [AppImage, deb]
+  # A directory of sized PNGs, so the packages install the whole hicolor set
+  # rather than a single 1024x1024 icon for the desktop to scale down.
+  icon: build/icons
   category: Development
+  desktop:
+    Keywords: git;diff;commit;history;repository;
+  # /usr/bin/git-tree is linked to this wrapper, not to the binary, so running
+  # the command in a terminal does not hold the shell. See after-install.tpl.
+  extraFiles:
+    - from: build/linux/git-tree-launcher
+      to: bin/git-tree
   synopsis: View-only diff viewer for local Git repositories
   # Debian requires a maintainer field with a syntactically valid address.
   maintainer: Khur Boon Kgim <boonkgim@users.noreply.github.com>
@@ -21,6 +31,8 @@ linux:
     A view-only desktop viewer for the history and diffs of a local Git repository.
     Four panels — commit graph, changed files, commit metadata and diff. It never
     writes to your working tree, index or object store.
+deb:
+  afterInstall: build/linux/after-install.tpl
 win:
   target: [nsis]
 mac:

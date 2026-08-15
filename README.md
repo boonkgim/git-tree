@@ -23,6 +23,25 @@ or writes anything to your working tree, index, or object store.
   or too old you get a plain message saying so at start-up rather than an empty window.
 - Linux, Windows, or macOS.
 
+## Installing
+
+On Linux, install the `.deb` from `release/` (or the [releases page]). That is what registers
+git-tree with the desktop the way any other application is registered — it unpacks to
+`/opt/git-tree`, installs `/usr/share/applications/git-tree.desktop` and the hicolor icons, and
+links `/usr/bin/git-tree`. The app then appears in **Show Applications** / your launcher and
+searches under "git" or "diff".
+
+```bash
+sudo dpkg -i release/git-tree-0.1.0-linux-amd64.deb
+```
+
+The AppImage is the portable alternative: one self-contained file that installs and registers
+*nothing*, by design. It runs when executed but will never show up in the applications list,
+and it gets none of the terminal behaviour described below, so prefer the `.deb` unless you
+specifically want a no-install binary.
+
+[releases page]: https://github.com/boonkgim/git-tree/releases
+
 ## Running it
 
 ```bash
@@ -34,12 +53,18 @@ GIT_TREE_REPO=/path/to/repository npm run dev     # opens a repository straight 
 (The environment variable is used in development because `electron-vite` consumes unrecognised
 command-line flags before they reach the app.)
 
-Once built, the packaged binary takes a path directly:
+Once installed, the command takes a path directly:
 
 ```bash
 git-tree /path/to/repository
 git-tree .
 ```
+
+The command returns to the prompt immediately. `/usr/bin/git-tree` is a small wrapper
+(`build/linux/git-tree-launcher`) that starts the application in its own session, so it does
+not hold the terminal, does not print Chromium's diagnostics into it, and survives both
+`Ctrl+C` and closing the terminal — the same arrangement VS Code's `code` uses. A relative path
+is still resolved against the directory you ran the command in.
 
 A repository can also be opened from **File → Open Repository…** (`Ctrl/Cmd+O`), from the
 recent list on the welcome screen, or by dropping a folder onto the window. Any path *inside* a
@@ -62,9 +87,9 @@ npm run build:mac     # .dmg              -> release/
 npm run build:all     # all three
 ```
 
-One thing is still outstanding before publishing binaries: no application icon is bundled, so
-the packaged app uses Electron's default. Builds are also unsigned — macOS and Windows will
-warn about an unidentified developer.
+Icons come from `build/icons/` (generated from `build/icon.svg`, a commit graph in the app's
+own lane colours), so the packages carry the full hicolor set rather than Electron's default.
+Builds are unsigned — macOS and Windows will warn about an unidentified developer.
 
 electron-builder only cross-builds so far in practice: Windows and macOS targets are best built
 on their own platforms (macOS in particular requires macOS for signing). Linux was the platform
@@ -243,7 +268,7 @@ npm test
 - Working-tree changes are picked up on window focus or `F5`, not watched live (see above).
 - Combined diffs for merge commits are not offered; pick a parent instead.
 - One repository per window.
-- No application icon is bundled yet; packaged builds show Electron's default.
+- The AppImage does not register a launcher entry; install the `.deb` for desktop integration.
 - Developed and packaged on Linux. The code avoids POSIX assumptions — git reports paths with
   `/` separators on every platform and that is what the UI splits on, and no command is ever
   built as a shell string — but Windows and macOS builds have not been exercised here. The one
@@ -260,7 +285,7 @@ to a repository, and that is enforced by an allowlist in `src/main/git/exec.ts` 
 convention.
 
 The gaps most worth filling are in "Known limitations" above: the Windows and macOS builds have
-not been exercised on their own platforms, and there is no application icon.
+not been exercised on their own platforms.
 
 Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 

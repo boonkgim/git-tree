@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- git-tree application icon: the commit graph the app draws, in its own
+       lane colours (see LANE_COLOURS in src/shared/graph.ts). Kept to one
+       trunk and one branch so it still reads at 16px. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f353d"/>
+      <stop offset="1" stop-color="#181b1f"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect x="9" y="9" width="1006" height="1006" rx="219" fill="none" stroke="#4a525b" stroke-width="18"/>
+
+  <g fill="none" stroke-width="64" stroke-linecap="round">
+    <!-- lane 1: a branch off the middle commit -->
+    <path d="M360 512 C 360 372, 664 452, 664 322" stroke="#e07a1f"/>
+    <!-- lane 0: the trunk, drawn over the branch root -->
+    <path d="M360 230 V 794" stroke="#2f7ed8"/>
+  </g>
+
+  <circle cx="664" cy="322" r="112" fill="#e07a1f"/>
+  <g fill="#2f7ed8">
+    <circle cx="360" cy="230" r="112"/>
+    <circle cx="360" cy="512" r="112"/>
+    <circle cx="360" cy="794" r="112"/>
+  </g>
+</svg>

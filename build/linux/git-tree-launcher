@@ -1,0 +1,34 @@
+#!/bin/sh
+# The command-line launcher, installed as /usr/bin/git-tree.
+#
+# The packaged binary is a GUI application, so running it straight from a shell
+# holds the terminal: Chromium's diagnostics land in it, Ctrl+C kills the
+# window, and closing the terminal takes the app with it. This wrapper starts
+# the real binary in its own session and returns to the prompt at once, so
+# `git-tree .` behaves like any other desktop application launched by name.
+#
+# Arguments are forwarded untouched. The app resolves a relative repository
+# path against the calling process's working directory, which the detached
+# process inherits, so `git-tree .` still means "the directory I am in".
+
+set -e
+
+self=$(readlink -f "$0")
+app=$(readlink -f "$(dirname "$self")/../git-tree" 2>/dev/null || true)
+
+# Guards against a mis-packaged layout resolving the wrapper onto itself.
+if [ -z "$app" ] || [ ! -x "$app" ] || [ "$app" = "$self" ]; then
+  echo "git-tree: cannot find the application binary next to $self" >&2
+  exit 1
+fi
+
+if command -v setsid >/dev/null 2>&1; then
+  setsid "$app" "$@" >/dev/null 2>&1 </dev/null &
+else
+  # setsid comes from util-linux and is all but universal; nohup only detaches
+  # from the terminal's signals, not from the session, but it is a fair
+  # fallback on a system without it.
+  nohup "$app" "$@" >/dev/null 2>&1 </dev/null &
+fi
+
+exit 0
