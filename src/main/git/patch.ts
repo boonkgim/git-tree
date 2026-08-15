@@ -1,0 +1,232 @@
+import { stat } from 'node:fs/promises'
+import { join } from 'node:path'
+import type {
+  ChangedFile,
+  DiffOptions,
+  DiffSpec,
+  FilePatch,
+  PatchKind,
+  Selection
+} from '@shared/types'
+import { wordDiff } from '@shared/worddiff'
+import { runGit } from './exec'
+import { countChanges, parsePatch } from './parse'
+import type { RepoSession } from './repo'
+import { buildDiffArgs, buildUntrackedPatchArgs } from './selection'
+import { resolve } from './files'
+
+/**
+ * Above this many bytes a patch is not worth rendering: the file is almost
+ * certainly generated, and turning megabytes of text into DOM nodes would lock
+ * the window. The user is told, and can ask for it anyway.
+ */
+const PATCH_SOFT_LIMIT = 2 * 1024 * 1024
+const PATCH_HARD_LIMIT = 64 * 1024 * 1024
+
+export interface PatchRequest {
+  selection: Selection
+  parentIndex: number
+  file: Pick<ChangedFile, 'path' | 'oldPath' | 'status' | 'untracked'>
+  options: DiffOptions
+  /** Set once the user has accepted the cost of a very large patch. */
+  force?: boolean
+}
+
+/** Size of a file on disk, or null when it is not there. */
+async function diskSize(cwd: string, relPath: string): Promise<number | null> {
+  try {
+    const { size } = await stat(join(cwd, relPath))
+    return size
+  } catch {
+    return null
+  }
+}
+
+/** Size of a blob at a revision, or null when it is absent there. */
+async function blobSize(cwd: string, rev: string, path: string): Promise<number | null> {
+  try {
+    const { stdout } = await runGit(cwd, ['cat-file', '-s', `${rev}:${path}`])
+    const size = Number.parseInt(stdout.trim(), 10)
+    return Number.isNaN(size) ? null : size
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Adds intra-line highlight ranges to runs of deleted lines immediately
+ * followed by the same number of added lines. Restricting it to balanced runs
+ * keeps the pairing unambiguous, which is what makes the highlighting readable
+ * rather than arbitrary.
+ */
+function highlightPairs(hunks: FilePatch['hunks']): void {
+  for (const hunk of hunks) {
+    const lines = hunk.lines
+    let i = 0
+    while (i < lines.length) {
+      if (lines[i].type !== 'del') {
+        i++
+        continue
+      }
+      let delEnd = i
+      while (delEnd < lines.length && lines[delEnd].type === 'del') delEnd++
+      let addEnd = delEnd
+      while (addEnd < lines.length && lines[addEnd].type === 'add') addEnd++
+
+      const delCount = delEnd - i
+      const addCount = addEnd - delEnd
+      if (delCount === addCount && delCount > 0 && delCount <= 200) {
+        for (let k = 0; k < delCount; k++) {
+          const before = lines[i + k]
+          const after = lines[delEnd + k]
+          const { del, add } = wordDiff(before.content, after.content)
+          if (del.length) before.highlights = del
+          if (add.length) after.highlights = add
+        }
+      }
+      i = addEnd > i ? addEnd : i + 1
+    }
+  }
+}
+
+/**
+ * The patch for one file within a comparison.
+ *
+ * Every degradation case ends up here, and each one produces a specific `kind`
+ * that the renderer can state plainly rather than showing an empty pane.
+ */
+export async function filePatch(session: RepoSession, request: PatchRequest): Promise<FilePatch> {
+  const cwd = session.info.root
+  const { spec } = await resolve(session, request.selection, request.parentIndex)
+  const { file, options } = request
+
+  const base: FilePatch = {
+    path: file.path,
+    oldPath: file.oldPath,
+    kind: 'empty',
+    status: file.status,
+    hunks: [],
+    isSymlink: false,
+    nonUtf8: false,
+    oldSize: null,
+    newSize: null,
+    insertions: 0,
+    deletions: 0,
+    notes: [],
+    expandable: options.context !== 'all'
+  }
+
+  if (spec.mode === 'empty') {
+    return { ...base, notes: [spec.reason] }
+  }
+
+  const limit = request.force ? PATCH_HARD_LIMIT : PATCH_SOFT_LIMIT
+  let stdout: string
+  let nonUtf8 = false
+  let truncated = false
+
+  try {
+    if (file.untracked) {
+      // An untracked file is in no tree, so `git diff` has nothing to name it
+      // with. `--no-index` compares it against /dev/null and exits 1 because
+      // the two differ, which is the expected outcome here.
+      const result = await runGit(cwd, buildUntrackedPatchArgs(file.path, options), {
+        maxBuffer: limit,
+        okExitCodes: [0, 1]
+      })
+      stdout = result.stdout
+      nonUtf8 = result.nonUtf8
+      truncated = result.truncated
+    } else {
+      const paths = file.oldPath ? [file.oldPath, file.path] : [file.path]
+      const result = await runGit(cwd, buildDiffArgs(spec, 'patch', options, paths), {
+        maxBuffer: limit
+      })
+      stdout = result.stdout
+      nonUtf8 = result.nonUtf8
+      truncated = result.truncated
+    }
+  } catch (e) {
+    return {
+      ...base,
+      notes: [e instanceof Error ? e.message : String(e)]
+    }
+  }
+
+  if (truncated) {
+    return {
+      ...base,
+      kind: 'too-large',
+      notes: [
+        `This diff is larger than ${Math.round(limit / 1024 / 1024)} MB and was not rendered.`
+      ]
+    }
+  }
+
+  const parsed = parsePatch(stdout)
+  const notes: string[] = []
+  let kind: PatchKind = 'text'
+
+  if (parsed.binary) {
+    kind = file.untracked ? 'untracked-binary' : 'binary'
+  } else if (parsed.submodule) {
+    kind = 'submodule'
+  } else if (parsed.hunks.length === 0) {
+    kind = 'empty'
+    if (parsed.headerOnly) {
+      notes.push(
+        file.status === 'renamed'
+          ? 'The file was renamed; its contents are unchanged.'
+          : 'The file metadata changed but its contents did not.'
+      )
+    } else if (options.ignoreWhitespace) {
+      notes.push('Only whitespace changed, and whitespace is being ignored.')
+    } else {
+      notes.push('No textual changes in this comparison.')
+    }
+  }
+
+  if (nonUtf8) {
+    notes.push(
+      'This file is not valid UTF-8. Invalid bytes are shown as \u{FFFD} so the rest stays readable.'
+    )
+  }
+  if (parsed.isSymlink) {
+    notes.push('This is a symbolic link; the diff shows the path it points at.')
+  }
+  if (kind === 'submodule') {
+    notes.push('This is a submodule; only the commit it points at is recorded here.')
+  }
+
+  // Sizes are only worth fetching when there is nothing else to show.
+  let oldSize: number | null = null
+  let newSize: number | null = null
+  if (kind === 'binary' || kind === 'untracked-binary') {
+    oldSize = file.untracked ? null : await blobSize(cwd, spec.base, file.oldPath ?? file.path)
+    newSize =
+      spec.mode === 'working'
+        ? await diskSize(cwd, file.path)
+        : await blobSize(cwd, spec.target, file.path)
+    notes.push('Binary file — contents are not shown.')
+  }
+
+  if (kind === 'text') highlightPairs(parsed.hunks)
+  const { insertions, deletions } = countChanges(parsed.hunks)
+
+  return {
+    ...base,
+    kind,
+    hunks: parsed.hunks,
+    modeChange: parsed.modeChange,
+    isSymlink: parsed.isSymlink,
+    nonUtf8,
+    oldSize,
+    newSize,
+    notes,
+    insertions,
+    deletions,
+    expandable: options.context !== 'all' && kind === 'text' && parsed.hunks.length > 0
+  }
+}
+
+export type { DiffSpec }

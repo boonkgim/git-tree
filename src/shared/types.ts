@@ -1,0 +1,246 @@
+/**
+ * The only data shapes that cross the main <-> renderer boundary.
+ * Everything here is plain JSON: no handles, no functions, no Buffers.
+ */
+
+/* ---------------------------------------------------------------- selection */
+
+/** A row in the history list: either a real commit or the synthetic working-tree node. */
+export type HistoryNode = { kind: 'commit'; sha: string } | { kind: 'working' }
+
+/**
+ * What the user has picked in the history list.
+ *
+ * `anchor` is the pinned end of the comparison; `other` is the end that a
+ * Ctrl/Cmd+Click moves. Storing it this way makes the selection inherently
+ * order-insensitive: `resolveSelection` decides which end is "before".
+ */
+export interface Selection {
+  anchor: HistoryNode
+  other?: HistoryNode
+}
+
+/** Options that change how a diff is computed (never what it is compared against). */
+export interface DiffOptions {
+  /** Unified context lines. `'all'` means the whole file. */
+  context: number | 'all'
+  ignoreWhitespace: boolean
+}
+
+export const DEFAULT_DIFF_OPTIONS: DiffOptions = { context: 3, ignoreWhitespace: false }
+
+/** How two endpoints relate to each other in the commit graph. */
+export type Relation = 'ancestor' | 'divergent' | 'unrelated'
+
+/**
+ * A resolved comparison. Produced by `resolveSelection`, consumed by
+ * `buildDiffArgs`. `base` is always the "before" side.
+ */
+export type DiffSpec =
+  | { mode: 'commit'; base: string; target: string; parentIndex: number; parents: string[] }
+  | { mode: 'root'; base: string; target: string }
+  | { mode: 'working'; base: string; baseIsHead: boolean }
+  | { mode: 'range'; base: string; target: string; relation: Relation }
+  /** Nothing to show, with a reason the UI can display verbatim. */
+  | { mode: 'empty'; reason: string }
+
+/* ------------------------------------------------------------------- history */
+
+export interface RefLabel {
+  name: string
+  kind: 'head' | 'branch' | 'remote' | 'tag'
+  /** True when HEAD points at this ref. */
+  isHead: boolean
+}
+
+export interface CommitSummary {
+  sha: string
+  parents: string[]
+  authorName: string
+  authorEmail: string
+  authorDate: string
+  committerDate: string
+  subject: string
+  refs: RefLabel[]
+}
+
+export interface CommitDetail extends CommitSummary {
+  committerName: string
+  committerEmail: string
+  /** Full commit message, subject and body. */
+  body: string
+}
+
+export interface HistoryPage {
+  rows: CommitSummary[]
+  /** Offset the rows start at. */
+  offset: number
+  /** True when the log stream has been fully consumed. */
+  done: boolean
+  /** Total known so far; final once `done`. */
+  loaded: number
+}
+
+/* ------------------------------------------------------------ working tree */
+
+export interface WorkingSummary {
+  hasChanges: boolean
+  staged: number
+  unstaged: number
+  untracked: number
+  conflicted: number
+}
+
+/* ----------------------------------------------------------------- the repo */
+
+export type RepoOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'bisect' | null
+
+export interface RepoInfo {
+  id: string
+  /** Absolute path of the working-tree root (or the git dir for a bare repo). */
+  root: string
+  /** Basename, for the title bar. */
+  name: string
+  head: string | null
+  /** Short branch name, or null when detached or unborn. */
+  branch: string | null
+  detached: boolean
+  unborn: boolean
+  bare: boolean
+  operation: RepoOperation
+  gitVersion: string
+}
+
+export interface GitTreeError {
+  code:
+    | 'GIT_MISSING'
+    | 'GIT_TOO_OLD'
+    | 'NOT_A_REPO'
+    | 'UNREADABLE'
+    | 'GIT_FAILED'
+    | 'FORBIDDEN'
+    | 'TIMEOUT'
+    | 'TOO_LARGE'
+    | 'NO_REPO'
+  message: string
+  detail?: string
+}
+
+/** Every IPC call returns this; the renderer never sees a thrown exception. */
+export type Result<T> = { ok: true; value: T } | { ok: false; error: GitTreeError }
+
+/* ---------------------------------------------------------- changed files */
+
+export type FileStatus =
+  | 'added'
+  | 'modified'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'typechange'
+  | 'unmerged'
+  | 'untracked'
+  | 'unknown'
+
+export interface ChangedFile {
+  path: string
+  /** Set for renames and copies. */
+  oldPath?: string
+  status: FileStatus
+  /** Similarity percentage for renames/copies. */
+  score?: number
+  insertions: number | null
+  deletions: number | null
+  binary: boolean
+  /** True for files present on disk but not in the index. */
+  untracked?: boolean
+}
+
+export interface ChangedFilesResult {
+  spec: DiffSpec
+  /** Human-readable statement of exactly what is being compared. */
+  label: string
+  files: ChangedFile[]
+  /** Non-fatal things the user should know (truncation, unrelated histories...). */
+  notes: string[]
+  truncated: boolean
+}
+
+/* -------------------------------------------------------------- file patch */
+
+export type DiffLineType = 'context' | 'add' | 'del' | 'meta'
+
+export interface DiffLine {
+  type: DiffLineType
+  /** Line number on the before side, null for added lines. */
+  oldNumber: number | null
+  /** Line number on the after side, null for deleted lines. */
+  newNumber: number | null
+  content: string
+  /** True when the file has no trailing newline at this line. */
+  noNewline?: boolean
+  /**
+   * Character ranges to emphasise, from the intra-line word diff.
+   * Pairs of [start, end) offsets into `content`.
+   */
+  highlights?: Array<[number, number]>
+}
+
+export interface DiffHunk {
+  header: string
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  lines: DiffLine[]
+}
+
+export type PatchKind =
+  | 'text'
+  | 'binary'
+  | 'submodule'
+  | 'empty'
+  | 'too-large'
+  | 'unmerged'
+  | 'untracked-binary'
+
+export interface FilePatch {
+  path: string
+  oldPath?: string
+  kind: PatchKind
+  status: FileStatus
+  hunks: DiffHunk[]
+  /** e.g. "100644 -> 100755", or "symlink". */
+  modeChange?: string
+  isSymlink: boolean
+  /** Set when the raw bytes were not valid UTF-8 and were decoded lossily. */
+  nonUtf8: boolean
+  oldSize: number | null
+  newSize: number | null
+  /** Line counts for this file within this comparison. */
+  insertions: number
+  deletions: number
+  notes: string[]
+  /** True when `context` did not cover the whole file, so expansion is offered. */
+  expandable: boolean
+}
+
+/* ---------------------------------------------------------------- settings */
+
+export interface PanelSizes {
+  /** Height of the history panel, in px. */
+  historyHeight: number
+  /** Width of the left column (files + metadata), in px. */
+  leftWidth: number
+  /** Height of the changed-files panel within the left column, in px. */
+  filesHeight: number
+}
+
+export interface Settings {
+  panels: PanelSizes
+  recents: string[]
+  window: { width: number; height: number; x?: number; y?: number; maximized: boolean }
+  diff: DiffOptions
+}
+
+export const DEFAULT_PANELS: PanelSizes = { historyHeight: 320, leftWidth: 440, filesHeight: 260 }

@@ -1,0 +1,24 @@
+appId: dev.gittree.app
+productName: git-tree
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**
+  - package.json
+  - '!**/{.git,docs,tests,src}/**'
+asar: true
+linux:
+  target: [AppImage, deb]
+  category: Development
+  synopsis: View-only diff viewer for local Git repositories
+  # Debian requires a maintainer. Replace this before publishing a .deb.
+  maintainer: git-tree <maintainer@example.invalid>
+win:
+  target: [nsis]
+mac:
+  target: [dmg]
+  category: public.app-category.developer-tools
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
