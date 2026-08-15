@@ -10,9 +10,13 @@ graph, changed files, commit metadata, diff — laid out like SourceTree.
 It is **view-only**. It never stages, commits, checks out, discards, stashes, fetches, pushes,
 or writes anything to your working tree, index, or object store.
 
+![git-tree open on its own repository](docs/03-git-tree-on-itself.png)
+*git-tree viewing its own history, with a commit selected against its parent: the changed file,
+the commit message, and a diff with intra-line highlighting.*
+
 ![git-tree showing uncommitted changes against HEAD](docs/02-git-tree-screenshot.png)
-*git-tree with the uncommitted-changes row selected. The layout follows
-`docs/01-sourcetree-cropped.png`.*
+*The uncommitted-changes row selected — staged and unstaged together — against a fixture
+repository. The layout follows `docs/01-sourcetree-cropped.png`.*
 
 ---
 
