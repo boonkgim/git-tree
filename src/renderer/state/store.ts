@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { applyClick, sameNode, selectionsEqual } from '@shared/selection'
 import {
   DEFAULT_DIFF_OPTIONS,
+  DEFAULT_FILES_VIEW,
   DEFAULT_PANELS,
   type ChangedFile,
   type ChangedFilesResult,
@@ -9,6 +10,7 @@ import {
   type CommitSummary,
   type DiffOptions,
   type FilePatch,
+  type FilesView,
   type GitTreeError,
   type HistoryNode,
   type PanelSizes,
@@ -65,6 +67,8 @@ export interface State {
 
   detail: CommitDetail | null
   diff: DiffOptions
+  /** Flat list or directory tree, in the changed-files panel. */
+  filesView: FilesView
 }
 
 const initialState: State = {
@@ -88,7 +92,8 @@ const initialState: State = {
   patchError: null,
   forcePatch: false,
   detail: null,
-  diff: { ...DEFAULT_DIFF_OPTIONS }
+  diff: { ...DEFAULT_DIFF_OPTIONS },
+  filesView: DEFAULT_FILES_VIEW
 }
 
 type Action =
@@ -112,13 +117,19 @@ type Action =
   | { type: 'patch-error'; error: GitTreeError }
   | { type: 'detail'; detail: CommitDetail | null }
   | { type: 'diff-options'; options: Partial<DiffOptions> }
+  | { type: 'files-view'; view: FilesView }
 
 /* ----------------------------------------------------------------- reducer */
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'settings':
-      return { ...state, settings: action.settings, diff: action.settings.diff }
+      return {
+        ...state,
+        settings: action.settings,
+        diff: action.settings.diff,
+        filesView: action.settings.filesView
+      }
 
     case 'opening':
       return { ...state, opening: true, error: null }
@@ -128,12 +139,19 @@ function reducer(state: State, action: Action): State {
         ...initialState,
         settings: state.settings,
         diff: state.diff,
+        filesView: state.filesView,
         repo: action.repo,
         epoch: state.epoch + 1
       }
 
     case 'closed':
-      return { ...initialState, settings: state.settings, diff: state.diff, epoch: state.epoch + 1 }
+      return {
+        ...initialState,
+        settings: state.settings,
+        diff: state.diff,
+        filesView: state.filesView,
+        epoch: state.epoch + 1
+      }
 
     case 'error':
       return { ...state, error: action.error, opening: false }
@@ -224,6 +242,11 @@ function reducer(state: State, action: Action): State {
         patchError: null,
         patchLoading: false
       }
+
+    case 'files-view':
+      // Purely a way of drawing the same list: nothing is re-queried, and the
+      // selected file stays selected across the switch.
+      return { ...state, filesView: action.view }
   }
 }
 
@@ -265,6 +288,7 @@ export interface AppApi {
   selectFile: (path: string | null) => void
   setParentIndex: (index: number) => void
   setDiffOptions: (options: Partial<DiffOptions>) => void
+  setFilesView: (view: FilesView) => void
   loadAnyway: () => void
   savePanels: (panels: PanelSizes) => void
 }
@@ -599,6 +623,11 @@ export function useGitTree(): AppApi {
     void window.gitTree.setSettings({ diff: next })
   }, [])
 
+  const setFilesView = useCallback((view: FilesView) => {
+    dispatch({ type: 'files-view', view })
+    void window.gitTree.setSettings({ filesView: view })
+  }, [])
+
   return {
     state,
     hasWorkingRow,
@@ -623,6 +652,7 @@ export function useGitTree(): AppApi {
       []
     ),
     setDiffOptions,
+    setFilesView,
     loadAnyway: useCallback(() => requestPatch(true), [requestPatch]),
     savePanels
   }

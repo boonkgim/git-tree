@@ -1,7 +1,12 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
-import { DEFAULT_DIFF_OPTIONS, DEFAULT_PANELS, type Settings } from '@shared/types'
+import {
+  DEFAULT_DIFF_OPTIONS,
+  DEFAULT_FILES_VIEW,
+  DEFAULT_PANELS,
+  type Settings
+} from '@shared/types'
 
 const MAX_RECENTS = 12
 
@@ -10,7 +15,8 @@ function defaults(): Settings {
     panels: { ...DEFAULT_PANELS },
     recents: [],
     window: { width: 1440, height: 900, maximized: false },
-    diff: { ...DEFAULT_DIFF_OPTIONS }
+    diff: { ...DEFAULT_DIFF_OPTIONS },
+    filesView: DEFAULT_FILES_VIEW
   }
 }
 
@@ -62,6 +68,7 @@ function coerce(raw: unknown): Settings {
       ignoreWhitespace: input.diff.ignoreWhitespace === true
     }
   }
+  if (input.filesView === 'flat' || input.filesView === 'tree') base.filesView = input.filesView
   return base
 }
 

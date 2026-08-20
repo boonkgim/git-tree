@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A **Flat / Tree** toggle in the changed-files panel. Tree groups the files by directory, folds
+  single-child directory chains into one row (`src/renderer/components`), counts the files inside
+  a folded directory, and has ⊟ / ⊞ to fold or open everything. Folded directories are remembered
+  by path across commits, and the selected file is revealed when the selection moves. The choice
+  is persisted with the other preferences; flat, which is Git's own order, stays the default.
 - A command-line launcher: `/usr/bin/git-tree` now points at a wrapper that starts the app in
   its own session, so running `git-tree .` in a terminal returns to the prompt instead of
   holding the shell until the window is closed. Applies to the `.deb`; the AppImage, being a

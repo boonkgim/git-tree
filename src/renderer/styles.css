@@ -543,6 +543,63 @@ select {
   color: #fff;
 }
 
+/* --- tree view --- */
+
+.drow {
+  gap: 4px;
+}
+.twisty {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.dname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+}
+.drow.collapsed .dname {
+  color: var(--text);
+}
+
+/* --- segmented toggle --- */
+
+.segmented {
+  flex: none;
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.segmented button {
+  border: none;
+  border-radius: 0;
+  padding: 1px 7px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: var(--panel);
+}
+.segmented button + button {
+  border-left: 1px solid var(--border-strong);
+}
+.segmented button:hover {
+  background: var(--panel-head);
+}
+.segmented button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.icon-button {
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
 /* -------------------------------------------------------------- metadata */
 
 .meta-body {

@@ -236,11 +236,17 @@ export interface PanelSizes {
   filesHeight: number
 }
 
+/** How the changed-file list is laid out: as git reported it, or grouped by directory. */
+export type FilesView = 'flat' | 'tree'
+
+export const DEFAULT_FILES_VIEW: FilesView = 'flat'
+
 export interface Settings {
   panels: PanelSizes
   recents: string[]
   window: { width: number; height: number; x?: number; y?: number; maximized: boolean }
   diff: DiffOptions
+  filesView: FilesView
 }
 
 export const DEFAULT_PANELS: PanelSizes = { historyHeight: 320, leftWidth: 440, filesHeight: 260 }

@@ -109,6 +109,8 @@ this was developed and packaged on.
 | `Ctrl/Cmd+Click` a selected row | Removes it from the selection |
 | Click, plain | Collapses back to a single selection |
 | `↑` / `↓` | Move the selection |
+| **Flat** / **Tree** in the changed-files header | Switch between one row per file and a directory tree |
+| Click a folder row | Fold it shut; the header's ⊟ / ⊞ folds or opens all of them |
 | `F5` | Refresh |
 
 The diff panel always states the comparison it is showing in words, so it is never ambiguous
@@ -153,6 +155,28 @@ it was selected and the tree becomes clean, the selection falls back to `HEAD`.
 
 **With a clean tree the default selection is `HEAD`**, not the newest commit by date — with a
 detached `HEAD`, or a branch behind another, the top row is not where you are.
+
+### The changed-file list
+
+**Two layouts, because neither is right for every change.** The flat list is exactly what Git
+reported, in Git's order, and it is the better one for a commit touching five files — the full
+path on every row, nothing to unfold. A rename across forty files in a dozen directories is the
+opposite case: there the shared prefixes are most of the pixels and none of the information, so
+the tree groups them and spends the width on the names instead. The choice is a toggle in the
+panel header, persisted like the diff options.
+
+**Directories that hold nothing but one more directory are folded into a single row**
+(`src/renderer/components`, not three rows of indentation). Repositories are full of these
+chains, and a row per empty level costs indentation and gives nothing back.
+
+**Folding is by path, so it survives moving between commits** — the directories someone has
+chosen to ignore are usually the same ones in the next comparison. The selected file is revealed
+when the selection moves, but never when the folded set itself changes, so folding shut the
+directory you are looking at does not spring straight back open.
+
+**The tree is flattened back into rows before it is drawn.** The panel is windowed like every
+other list here, and windowing needs an addressable array, not a nested structure to walk on
+every scroll.
 
 ### The diff
 

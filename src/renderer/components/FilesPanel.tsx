@@ -1,9 +1,12 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { allDirPaths, ancestorDirPaths, buildFileTreeRows } from '@shared/filetree'
 import type { ChangedFile, FileStatus } from '@shared/types'
 import type { AppApi } from '../state/store'
 import { VirtualList } from './VirtualList'
 
 const ROW_HEIGHT = 22
+/** Indentation per tree level, in px. */
+const INDENT = 13
 
 const STATUS_LETTER: Record<FileStatus, string> = {
   added: 'A',
@@ -38,55 +41,145 @@ function splitPath(path: string): { dir: string; name: string } {
     : { dir: path.slice(0, index + 1), name: path.slice(index + 1) }
 }
 
+function rowTitle(file: ChangedFile): string {
+  return file.oldPath
+    ? `${file.oldPath} → ${file.path}${file.score ? ` (${file.score}% similar)` : ''}`
+    : file.path
+}
+
+function Counts({ file }: { file: ChangedFile }): JSX.Element {
+  if (file.binary) return <span className="counts dim">bin</span>
+  return (
+    <span className="counts">
+      {file.insertions ? <span className="plus">+{file.insertions}</span> : null}
+      {file.deletions ? <span className="minus">−{file.deletions}</span> : null}
+    </span>
+  )
+}
+
 function FileRow({
   file,
+  /** The part of the path to show; the tree view has already spent the rest on indentation. */
+  name,
+  showDir,
+  indent,
   selected,
   onSelect
 }: {
   file: ChangedFile
+  name: string
+  showDir: boolean
+  indent: number
   selected: boolean
   onSelect: (path: string) => void
 }): JSX.Element {
-  const { dir, name } = splitPath(file.path)
-  const renamedFrom = file.oldPath ? splitPath(file.oldPath) : null
+  const { dir } = splitPath(file.path)
 
   return (
     <div
       className={`frow${selected ? ' selected' : ''}`}
-      style={{ height: ROW_HEIGHT }}
+      style={{ height: ROW_HEIGHT, paddingLeft: 8 + indent }}
       onMouseDown={() => onSelect(file.path)}
-      title={
-        renamedFrom
-          ? `${file.oldPath} → ${file.path}${file.score ? ` (${file.score}% similar)` : ''}`
-          : file.path
-      }
+      title={rowTitle(file)}
     >
       <span className={`status status-${file.status}`} title={STATUS_TITLE[file.status]}>
         {STATUS_LETTER[file.status]}
       </span>
       <span className="fpath">
-        {dir && <span className="dim">{dir}</span>}
+        {showDir && dir && <span className="dim">{dir}</span>}
         <span className="fname">{name}</span>
-        {renamedFrom && <span className="dim renamed-from"> ← {file.oldPath}</span>}
+        {file.oldPath && <span className="dim renamed-from"> ← {file.oldPath}</span>}
       </span>
-      {file.binary ? (
-        <span className="counts dim">bin</span>
-      ) : (
-        <span className="counts">
-          {file.insertions ? <span className="plus">+{file.insertions}</span> : null}
-          {file.deletions ? <span className="minus">−{file.deletions}</span> : null}
-        </span>
-      )}
+      <Counts file={file} />
+    </div>
+  )
+}
+
+function DirRow({
+  label,
+  depth,
+  collapsed,
+  fileCount,
+  onToggle
+}: {
+  label: string
+  depth: number
+  collapsed: boolean
+  fileCount: number
+  onToggle: () => void
+}): JSX.Element {
+  return (
+    <div
+      className={`frow drow${collapsed ? ' collapsed' : ''}`}
+      style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
+      onMouseDown={onToggle}
+      title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
+    >
+      <span className="twisty">{collapsed ? '▸' : '▾'}</span>
+      <span className="dname">{label}</span>
+      {collapsed && <span className="counts dim">{fileCount}</span>}
     </div>
   )
 }
 
 /** The files touched by whatever is selected in the history. */
 export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
-  const { state, selectFile } = api
+  const { state, selectFile, setFilesView } = api
   const files = state.files?.files ?? []
+  const tree = state.filesView === 'tree'
 
-  const renderRow = useCallback(
+  // Which directories are folded shut. Keyed by path, so it survives switching
+  // commits: the directories a user has chosen to ignore are usually the same
+  // ones in the next comparison.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+
+  const toggleDir = useCallback((path: string) => {
+    setCollapsed((previous) => {
+      const next = new Set(previous)
+      if (!next.delete(path)) next.add(path)
+      return next
+    })
+  }, [])
+
+  const rows = useMemo(
+    () => (tree ? buildFileTreeRows(files, collapsed) : []),
+    [tree, files, collapsed]
+  )
+
+  // Reveal the selected file when the *selection* moves, but never in reaction
+  // to the collapsed set itself — otherwise collapsing the directory the
+  // selected file sits in would spring straight back open.
+  const revealedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!tree || !state.selectedPath) return
+    if (revealedFor.current === state.selectedPath) return
+    revealedFor.current = state.selectedPath
+    const ancestors = ancestorDirPaths(files, state.selectedPath)
+    if (ancestors.length === 0) return
+    setCollapsed((previous) => {
+      if (!ancestors.some((dir) => previous.has(dir))) return previous
+      const next = new Set(previous)
+      for (const dir of ancestors) next.delete(dir)
+      return next
+    })
+  }, [tree, state.selectedPath, files])
+
+  const selectedIndex = useMemo(() => {
+    if (!state.selectedPath) return null
+    if (!tree) return files.findIndex((file) => file.path === state.selectedPath)
+    return rows.findIndex((row) => row.kind === 'file' && row.file.path === state.selectedPath)
+  }, [tree, rows, files, state.selectedPath])
+
+  const anyExpanded = useMemo(
+    () => (tree ? rows.some((row) => row.kind === 'dir' && !row.collapsed) : false),
+    [tree, rows]
+  )
+
+  const toggleAll = useCallback(() => {
+    setCollapsed(anyExpanded ? new Set(allDirPaths(files)) : new Set())
+  }, [anyExpanded, files])
+
+  const renderFlatRow = useCallback(
     (index: number) => {
       const file = files[index]
       if (!file) return null
@@ -94,12 +187,46 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
         <FileRow
           key={file.path}
           file={file}
+          name={splitPath(file.path).name}
+          showDir
+          indent={0}
           selected={file.path === state.selectedPath}
           onSelect={selectFile}
         />
       )
     },
     [files, state.selectedPath, selectFile]
+  )
+
+  const renderTreeRow = useCallback(
+    (index: number) => {
+      const row = rows[index]
+      if (!row) return null
+      if (row.kind === 'dir') {
+        return (
+          <DirRow
+            key={`d:${row.path}`}
+            label={row.label}
+            depth={row.depth}
+            collapsed={row.collapsed}
+            fileCount={row.fileCount}
+            onToggle={() => toggleDir(row.path)}
+          />
+        )
+      }
+      return (
+        <FileRow
+          key={`f:${row.file.path}`}
+          file={row.file}
+          name={row.name}
+          showDir={false}
+          indent={row.depth * INDENT}
+          selected={row.file.path === state.selectedPath}
+          onSelect={selectFile}
+        />
+      )
+    },
+    [rows, state.selectedPath, selectFile, toggleDir]
   )
 
   const empty = state.filesError ? (
@@ -120,14 +247,52 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           {files.length.toLocaleString()}
           {state.files?.truncated ? '+' : ''}
         </span>
+        <div className="grow" />
+
+        {tree && files.length > 0 && (
+          <button
+            type="button"
+            className="link dim icon-button"
+            onClick={toggleAll}
+            title={anyExpanded ? 'Collapse all folders' : 'Expand all folders'}
+          >
+            {anyExpanded ? '⊟' : '⊞'}
+          </button>
+        )}
+
+        <div className="segmented" role="group" aria-label="Changed-file layout">
+          <button
+            type="button"
+            className={tree ? '' : 'on'}
+            aria-pressed={!tree}
+            onClick={() => setFilesView('flat')}
+            title="One row per file, in git's order"
+          >
+            Flat
+          </button>
+          <button
+            type="button"
+            className={tree ? 'on' : ''}
+            aria-pressed={tree}
+            onClick={() => setFilesView('tree')}
+            title="Grouped by directory"
+          >
+            Tree
+          </button>
+        </div>
       </header>
       {state.files?.notes.map((note) => (
         <p className="note" key={note}>
           {note}
         </p>
       ))}
-      <VirtualList count={files.length} rowHeight={ROW_HEIGHT} empty={empty}>
-        {renderRow}
+      <VirtualList
+        count={tree ? rows.length : files.length}
+        rowHeight={ROW_HEIGHT}
+        scrollToIndex={selectedIndex}
+        empty={empty}
+      >
+        {tree ? renderTreeRow : renderFlatRow}
       </VirtualList>
     </section>
   )
