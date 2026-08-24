@@ -5,6 +5,7 @@ import type {
   DiffOptions,
   FilePatch,
   HistoryPage,
+  RefEntry,
   RepoInfo,
   Result,
   Selection,
@@ -14,6 +15,7 @@ import type {
 import { toGitTreeError } from './git/exec'
 import { changedFiles } from './git/files'
 import { filePatch } from './git/patch'
+import { listRefs } from './git/refs'
 import { getSession, openRepo, refreshSession } from './git/repo'
 import { readSummary } from './git/status'
 import { commitDetail } from './git/detail'
@@ -70,6 +72,15 @@ export function registerIpc(): void {
     'history:page',
     async (id: string, offset: number, limit: number): Promise<HistoryPage> =>
       getSession(id).log.page(Math.max(0, offset | 0), Math.min(Math.max(1, limit | 0), 5000))
+  )
+
+  handle('refs:list', async (id: string): Promise<RefEntry[]> => listRefs(getSession(id).info.root))
+
+  // The index a commit sits at in the history walk, so the sidebar can scroll
+  // to a ref tip the renderer has not paged in yet. -1 when it is not there.
+  handle(
+    'history:index-of',
+    async (id: string, sha: string): Promise<number> => getSession(id).log.indexOf(sha)
   )
 
   handle(

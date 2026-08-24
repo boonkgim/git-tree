@@ -4,6 +4,7 @@ import {
   DEFAULT_DIFF_OPTIONS,
   DEFAULT_FILES_VIEW,
   DEFAULT_PANELS,
+  DEFAULT_SIDEBAR_VISIBLE,
   type ChangedFile,
   type ChangedFilesResult,
   type CommitDetail,
@@ -14,6 +15,7 @@ import {
   type GitTreeError,
   type HistoryNode,
   type PanelSizes,
+  type RefEntry,
   type RepoInfo,
   type Result,
   type Selection,
@@ -33,6 +35,15 @@ const PAGE_SIZE = 1000
  * has actually been.
  */
 const PREFETCH_ROWS = 5000
+
+/**
+ * How many pages a jump to a ref will pull in before giving up.
+ *
+ * Comfortably past `LogStream`'s own 200,000-commit ceiling, so it only ever
+ * fires if paging somehow stops making progress: a bound that stops a loop
+ * spinning, not one the user can reach.
+ */
+const MAX_JUMP_PAGES = 400
 
 /* ------------------------------------------------------------------- state */
 
@@ -69,6 +80,13 @@ export interface State {
   diff: DiffOptions
   /** Flat list or directory tree, in the changed-files panel. */
   filesView: FilesView
+
+  /** Branches, remote-tracking branches and tags, for the sidebar. */
+  refs: RefEntry[]
+  refsError: GitTreeError | null
+  sidebarVisible: boolean
+  /** Why the last jump to a ref did not go anywhere. Cleared by the next one. */
+  jumpNote: string | null
 }
 
 const initialState: State = {
@@ -93,7 +111,11 @@ const initialState: State = {
   forcePatch: false,
   detail: null,
   diff: { ...DEFAULT_DIFF_OPTIONS },
-  filesView: DEFAULT_FILES_VIEW
+  filesView: DEFAULT_FILES_VIEW,
+  refs: [],
+  refsError: null,
+  sidebarVisible: DEFAULT_SIDEBAR_VISIBLE,
+  jumpNote: null
 }
 
 type Action =
@@ -118,6 +140,10 @@ type Action =
   | { type: 'detail'; detail: CommitDetail | null }
   | { type: 'diff-options'; options: Partial<DiffOptions> }
   | { type: 'files-view'; view: FilesView }
+  | { type: 'refs'; refs: RefEntry[] }
+  | { type: 'refs-error'; error: GitTreeError }
+  | { type: 'sidebar'; visible: boolean }
+  | { type: 'jump-note'; note: string | null }
 
 /* ----------------------------------------------------------------- reducer */
 
@@ -128,7 +154,8 @@ function reducer(state: State, action: Action): State {
         ...state,
         settings: action.settings,
         diff: action.settings.diff,
-        filesView: action.settings.filesView
+        filesView: action.settings.filesView,
+        sidebarVisible: action.settings.sidebarVisible
       }
 
     case 'opening':
@@ -140,6 +167,12 @@ function reducer(state: State, action: Action): State {
         settings: state.settings,
         diff: state.diff,
         filesView: state.filesView,
+        sidebarVisible: state.sidebarVisible,
+        // Refreshing the repository already open re-reads the refs, so keeping
+        // the old list until the new one lands means the sidebar does not blink
+        // empty every time something touches .git. A *different* repository has
+        // to start empty, because its refs are not these.
+        refs: state.repo?.id === action.repo.id ? state.refs : [],
         repo: action.repo,
         epoch: state.epoch + 1
       }
@@ -150,6 +183,7 @@ function reducer(state: State, action: Action): State {
         settings: state.settings,
         diff: state.diff,
         filesView: state.filesView,
+        sidebarVisible: state.sidebarVisible,
         epoch: state.epoch + 1
       }
 
@@ -247,6 +281,19 @@ function reducer(state: State, action: Action): State {
       // Purely a way of drawing the same list: nothing is re-queried, and the
       // selected file stays selected across the switch.
       return { ...state, filesView: action.view }
+
+    case 'refs':
+      return { ...state, refs: action.refs, refsError: null }
+
+    case 'refs-error':
+      return { ...state, refs: [], refsError: action.error }
+
+    case 'sidebar':
+      return { ...state, sidebarVisible: action.visible }
+
+    case 'jump-note':
+      if (state.jumpNote === action.note) return state
+      return { ...state, jumpNote: action.note }
   }
 }
 
@@ -284,6 +331,9 @@ export interface AppApi {
   forget: (path: string) => void
 
   click: (node: HistoryNode, additive: boolean) => void
+  /** Moves the history to a ref's tip commit and selects it. */
+  jumpToRef: (entry: RefEntry) => void
+  toggleSidebar: () => void
   ensureLoaded: (lastVisible: number) => void
   selectFile: (path: string | null) => void
   setParentIndex: (index: number) => void
@@ -304,6 +354,7 @@ export function useGitTree(): AppApi {
   const filesSeq = useRef(0)
   const patchSeq = useRef(0)
   const pageSeq = useRef(0)
+  const jumpSeq = useRef(0)
 
   /* -------- settings -------- */
   useEffect(() => {
@@ -371,7 +422,9 @@ export function useGitTree(): AppApi {
       .catch((e) => dispatch({ type: 'error', error: asError(e) }))
   }, [])
 
-  // First page and working-tree summary, as soon as a repository opens.
+  // First page, working-tree summary and ref list, as soon as a repository
+  // opens. The refs are re-read on every refresh too, because a fetch or a
+  // branch created outside the app is exactly the change the sidebar is for.
   useEffect(() => {
     const repo = state.repo
     if (!repo) return
@@ -381,6 +434,11 @@ export function useGitTree(): AppApi {
       .then(unwrap)
       .then((working) => dispatch({ type: 'working', working }))
       .catch(() => dispatch({ type: 'working', working: emptySummary() }))
+    void window.gitTree
+      .listRefs(repo.id)
+      .then(unwrap)
+      .then((refs) => dispatch({ type: 'refs', refs }))
+      .catch((e) => dispatch({ type: 'refs-error', error: asError(e) }))
   }, [state.repo, state.epoch, loadPage])
 
   const lastVisibleRef = useRef(0)
@@ -405,6 +463,81 @@ export function useGitTree(): AppApi {
       loadPage(s.repo.id, s.commits.length)
     }
   }, [state.repo, state.commits, state.historyDone, state.loadingPage, loadPage])
+
+  const toggleSidebar = useCallback(() => {
+    const visible = !stateRef.current.sidebarVisible
+    dispatch({ type: 'sidebar', visible })
+    void window.gitTree.setSettings({ sidebarVisible: visible })
+  }, [])
+
+  /* -------- jumping to a ref -------- */
+
+  /**
+   * Pages history in until `index` is addressable, or gives up.
+   *
+   * A ref tip can sit far below what the renderer has paged in, and
+   * `scrollToIndex` cannot reach a row that does not exist yet. Requesting the
+   * same offset the background prefetch is already fetching is harmless: the
+   * reducer drops any page whose offset no longer matches the list length, so
+   * the loser of that race is discarded rather than appended twice.
+   */
+  const loadThrough = useCallback(
+    async (repoId: string, index: number, seq: number): Promise<'ok' | 'short' | 'stale'> => {
+      for (let guard = 0; guard < MAX_JUMP_PAGES; guard++) {
+        const s = stateRef.current
+        if (s.repo?.id !== repoId || seq !== jumpSeq.current) return 'stale'
+        if (s.commits.length > index) return 'ok'
+        if (s.historyDone) return 'short'
+        const page = await window.gitTree.historyPage(repoId, s.commits.length, PAGE_SIZE).then(unwrap)
+        dispatch({ type: 'page', commits: page.rows, offset: page.offset, done: page.done })
+        // `stateRef` is only current after a render, so the next iteration has
+        // to start on a later task or it would re-request the same offset.
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      return 'short'
+    },
+    []
+  )
+
+  const jumpToRef = useCallback(
+    (entry: RefEntry) => {
+      const repo = stateRef.current.repo
+      if (!repo) return
+      const seq = ++jumpSeq.current
+      dispatch({ type: 'jump-note', note: null })
+      void (async () => {
+        try {
+          const index = await window.gitTree.historyIndexOf(repo.id, entry.sha).then(unwrap)
+          if (seq !== jumpSeq.current) return
+          if (index < 0) {
+            dispatch({
+              type: 'jump-note',
+              note: `${entry.name} points at a commit that is not in the loaded history.`
+            })
+            return
+          }
+          const loaded = await loadThrough(repo.id, index, seq)
+          if (loaded === 'stale') return
+          if (loaded === 'short') {
+            dispatch({
+              type: 'jump-note',
+              note: `Could not load enough history to reach ${entry.name}.`
+            })
+            return
+          }
+          dispatch({
+            type: 'select-exact',
+            selection: { anchor: { kind: 'commit', sha: entry.sha } }
+          })
+        } catch (e) {
+          if (seq === jumpSeq.current) {
+            dispatch({ type: 'jump-note', note: asError(e).message })
+          }
+        }
+      })()
+    },
+    [loadThrough]
+  )
 
   /* -------- default selection -------- */
   useEffect(() => {
@@ -560,9 +693,10 @@ export function useGitTree(): AppApi {
       else if (command === 'menu:close-repo') closeRepo()
       else if (command === 'menu:refresh') refresh()
       else if (command === 'menu:open-path' && argument) openPath(argument)
+      else if (command === 'menu:toggle-sidebar') toggleSidebar()
     })
     return off
-  }, [openPicker, closeRepo, refresh, openPath])
+  }, [openPicker, closeRepo, refresh, openPath, toggleSidebar])
 
   /* -------- derived -------- */
   const hasWorkingRow = state.working?.hasChanges ?? false
@@ -645,6 +779,8 @@ export function useGitTree(): AppApi {
       (node: HistoryNode, additive: boolean) => dispatch({ type: 'select', node, additive }),
       []
     ),
+    jumpToRef,
+    toggleSidebar,
     ensureLoaded,
     selectFile: useCallback((path: string | null) => dispatch({ type: 'select-file', path }), []),
     setParentIndex: useCallback(

@@ -86,6 +86,14 @@ button.primary {
   padding: 7px 16px;
   font-weight: 600;
 }
+button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.on:hover {
+  background: var(--accent);
+}
 button.link {
   background: none;
   border: none;
@@ -95,6 +103,22 @@ button.link {
 }
 button.link.dim {
   color: var(--text-dim);
+}
+
+input[type='search'],
+input[type='text'] {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-width: 0;
+}
+input[type='search']:focus-visible,
+input[type='text']:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 select,
@@ -188,10 +212,21 @@ select {
   }
 }
 
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.column-sidebar {
+  flex: none;
+  min-width: 0;
+  display: flex;
+}
 .layout {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 .row-history {
@@ -566,6 +601,116 @@ select {
   color: var(--text);
 }
 
+/* ---------------------------------------------------------------- refs */
+
+.ref-filter {
+  flex: none;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.ref-filter input {
+  width: 100%;
+}
+
+.rrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  cursor: default;
+  white-space: nowrap;
+  border-bottom: var(--row-line);
+}
+.rrow:hover {
+  background: var(--panel-head);
+}
+.rref.selected {
+  background: var(--selected);
+  color: var(--selected-text);
+}
+.rref.selected .dim,
+.rref.selected .track {
+  color: var(--selected-text);
+}
+
+.rsection {
+  gap: 4px;
+  font-weight: 600;
+  background: var(--panel-head);
+}
+.rsection-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rgroup {
+  gap: 4px;
+}
+
+/* A dot rather than a chip: at this size the colour is the only part of a ref
+   chip that survives, and a chip's padding would cost a level of indentation. */
+.rdot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+}
+.rdot-branch {
+  background: #dceafb;
+  border-color: #a8c7ee;
+}
+.rdot-remote {
+  background: #eceff1;
+  border-color: #cbd2d9;
+}
+.rdot-tag {
+  background: #fdf0c9;
+  border-color: #e5cf8a;
+}
+
+.rname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rref.head .rname {
+  font-weight: 700;
+}
+.rhead-badge {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #333;
+  color: #fff;
+}
+.track {
+  flex: none;
+  display: inline-flex;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.track .ahead {
+  color: #1a7f37;
+}
+.track .behind {
+  color: #9a6700;
+}
+.track.gone {
+  color: var(--danger);
+}
+.rref.selected .ahead,
+.rref.selected .behind,
+.rref.selected .track.gone {
+  color: var(--selected-text);
+}
+
 /* --- segmented toggle --- */
 
 .segmented {
@@ -853,5 +998,26 @@ select {
   .merge-badge {
     background: #33254d;
     color: #c3a9f0;
+  }
+  .rdot-branch {
+    background: #1e3450;
+    border-color: #2f5680;
+  }
+  .rdot-remote {
+    background: #2c3238;
+    border-color: #3f474f;
+  }
+  .rdot-tag {
+    background: #3a3218;
+    border-color: #5c4f22;
+  }
+  .rhead-badge {
+    background: #4a525b;
+  }
+  .track .ahead {
+    color: #6fce8b;
+  }
+  .track .behind {
+    color: #e2c073;
   }
 }
