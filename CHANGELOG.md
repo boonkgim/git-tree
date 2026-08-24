@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A **branch sidebar**: branches, remote-tracking branches and tags, grouped on `/` the way the
+  changed-file tree groups directories, with the current branch marked and ahead/behind counts
+  against the upstream as of your last fetch. Clicking one moves the history to the commit it
+  points at — it checks nothing out; this application still only reads. A filter box narrows the
+  list and `Enter` takes the first match, `Ctrl/Cmd+B` (or **View → Branches Sidebar**) hides the
+  panel, and its width and visibility are persisted with the other panel sizes. Jumping to a ref
+  whose tip is below the loaded history pages the walk in first, so it works at any depth.
 - A **Flat / Tree** toggle in the changed-files panel. Tree groups the files by directory, folds
   single-child directory chains into one row (`src/renderer/components`), counts the files inside
   a folded directory, and has ⊟ / ⊞ to fold or open everything. Folded directories are remembered

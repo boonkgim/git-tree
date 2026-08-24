@@ -53,6 +53,31 @@ export interface RefLabel {
   isHead: boolean
 }
 
+/**
+ * A branch, remote-tracking branch, or tag, as listed for the sidebar.
+ *
+ * `sha` is always a commit: an annotated tag is peeled before it gets here, so
+ * the sidebar never has to care what kind of object a ref points at.
+ */
+export interface RefEntry {
+  /** Display name: `main`, `origin/main`, `v1.2.0`. */
+  name: string
+  kind: 'branch' | 'remote' | 'tag'
+  sha: string
+  /** True for the branch HEAD points at. */
+  isHead: boolean
+  /** Short upstream name, for a local branch that has one. */
+  upstream?: string
+  /** Commits this branch has that its upstream does not, and the reverse. */
+  ahead?: number
+  behind?: number
+  /** True when an upstream is configured but no longer exists. */
+  upstreamGone?: boolean
+  /** Committer date, or tagger date for an annotated tag. */
+  date: string
+  subject: string
+}
+
 export interface CommitSummary {
   sha: string
   parents: string[]
@@ -228,6 +253,8 @@ export interface FilePatch {
 /* ---------------------------------------------------------------- settings */
 
 export interface PanelSizes {
+  /** Width of the branch sidebar, in px. */
+  sidebarWidth: number
   /** Height of the history panel, in px. */
   historyHeight: number
   /** Width of the left column (files + metadata), in px. */
@@ -241,12 +268,21 @@ export type FilesView = 'flat' | 'tree'
 
 export const DEFAULT_FILES_VIEW: FilesView = 'flat'
 
+export const DEFAULT_SIDEBAR_VISIBLE = true
+
 export interface Settings {
   panels: PanelSizes
   recents: string[]
   window: { width: number; height: number; x?: number; y?: number; maximized: boolean }
   diff: DiffOptions
   filesView: FilesView
+  /** Whether the branch sidebar is shown. */
+  sidebarVisible: boolean
 }
 
-export const DEFAULT_PANELS: PanelSizes = { historyHeight: 320, leftWidth: 440, filesHeight: 260 }
+export const DEFAULT_PANELS: PanelSizes = {
+  sidebarWidth: 220,
+  historyHeight: 320,
+  leftWidth: 440,
+  filesHeight: 260
+}

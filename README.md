@@ -5,7 +5,8 @@
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
 A desktop viewer for the history and diffs of a local Git repository. Four panels — commit
-graph, changed files, commit metadata, diff — laid out like SourceTree.
+graph, changed files, commit metadata, diff — laid out like SourceTree, with a branch sidebar
+beside them.
 
 It is **view-only**. It never stages, commits, checks out, discards, stashes, fetches, pushes,
 or writes anything to your working tree, index, or object store.
@@ -111,6 +112,9 @@ this was developed and packaged on.
 | `↑` / `↓` | Move the selection |
 | **Flat** / **Tree** in the changed-files header | Switch between one row per file and a directory tree |
 | Click a folder row | Fold it shut; the header's ⊟ / ⊞ folds or opens all of them |
+| Click a branch, remote or tag in the sidebar | Moves the history to the commit it points at |
+| Type in the sidebar's filter, then `Enter` | Jumps to the first match; `Esc` clears the filter |
+| `Ctrl/Cmd+B` | Show or hide the sidebar |
 | `F5` | Refresh |
 
 The diff panel always states the comparison it is showing in words, so it is never ambiguous
@@ -177,6 +181,40 @@ directory you are looking at does not spring straight back open.
 **The tree is flattened back into rows before it is drawn.** The panel is windowed like every
 other list here, and windowing needs an addressable array, not a nested structure to walk on
 every scroll.
+
+### The branch sidebar
+
+**Selecting a branch moves the view, not the working tree.** This application does not check
+anything out — `checkout` and `switch` are refused by the same allowlist that refuses `commit`
+— so clicking `release/2.1` selects the commit that branch points at and scrolls the history to
+it. That is the operation a viewer can honestly offer, and the one that is actually wanted while
+reading history.
+
+**A permanent panel rather than a pop-up.** The sidebar costs horizontal space that the diff
+would otherwise have, which is the real argument against it; what it buys is a standing answer
+to "what is in this repository, and where is it relative to its upstream" instead of an answer
+that has to be summoned. `Ctrl/Cmd+B` hides it for the cases where the diff needs the room, and
+that choice is persisted along with its width.
+
+**Names are grouped on `/`, exactly like the changed-file tree** — `feature/login` and
+`feature/signup` under one `feature` row, single-child chains folded into `release/candidate`.
+Branch names are already paths, and the two panels behaving differently would be the surprise.
+
+**A filter, because the tree alone does not scale.** A repository with two hundred
+remote-tracking branches is a scrolling exercise; a substring match on the name is not. It is
+deliberately not fuzzy — these names are short and structured, and a fuzzy match on `main` that
+also returns `my-first-branch` costs more attention than it saves. While the filter is running
+every group is expanded, so a match is never hidden inside a collapsed row.
+
+**Ahead / behind is whatever the last fetch left behind.** Nothing here reaches the network, so
+the counts and the `gone` marker are read straight out of the refs on disk with
+`for-each-ref`. They are as current as your own `git fetch`, and never more.
+
+**Jumping pages history in first.** A ref tip can sit far below what the renderer has loaded —
+history is kept a few thousand rows ahead of the viewport, not loaded whole — and a row that
+does not exist cannot be scrolled to. The main process knows where the commit sits in the walk,
+so the renderer asks for that index, pulls pages until it is addressable, and only then moves the
+selection. A ref pointing at something outside the walk says so instead of doing nothing.
 
 ### The diff
 
@@ -274,7 +312,7 @@ mtime), object store, every file under `.git`, and the working tree byte-for-byt
 npm test
 ```
 
-134 tests, concentrated where things break silently rather than spread for coverage:
+166 tests, concentrated where things break silently rather than spread for coverage:
 
 - **`parse.test.ts`** — every `git` output parser: log records with multi-parent commits and
   separators inside subjects, `--name-status -z` including the `R096 old new` rename form,
@@ -289,6 +327,9 @@ npm test
 - **`graph.test.ts`** — lane assignment for linear, forked, merged and octopus histories, and
   that incremental assignment matches a single pass.
 - **`worddiff.test.ts`** — intra-line highlighting, including giving up on unrelated lines.
+- **`reftree.test.ts`** — the sidebar's grouping, folding, collapsing and filtering, and the
+  `for-each-ref` parser: tracking counts, annotated tags peeled to their commit, and tags on a
+  tree or a blob left out rather than shown as a row that cannot be jumped to.
 
 ## Known limitations
 

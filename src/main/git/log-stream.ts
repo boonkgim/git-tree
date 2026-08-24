@@ -21,6 +21,8 @@ const MAX_COMMITS = 200_000
 export class LogStream {
   private readonly commits: CommitSummary[] = []
   private readonly bySha = new Map<string, CommitSummary>()
+  /** Position of each commit in the walk, so a ref tip can be scrolled to. */
+  private readonly indexBySha = new Map<string, number>()
   private child: ChildProcess | null = null
   private decoder = new TextDecoder('utf-8')
   private pending = ''
@@ -59,7 +61,7 @@ export class LogStream {
       // Flush whatever is left; the final record has no trailing NUL.
       this.flush(this.decoder.decode())
       if (this.pending) {
-        this.commits.push(...index(parseLogRecords(this.pending), this.bySha))
+        this.append(parseLogRecords(this.pending))
         this.pending = ''
       }
       if (code !== 0 && code !== null && !this.disposed && this.commits.length === 0) {
@@ -94,8 +96,16 @@ export class LogStream {
     this.pending = this.pending.slice(lastNul + 1)
     const parsed = parseLogRecords(complete)
     if (parsed.length) {
-      this.commits.push(...index(parsed, this.bySha))
+      this.append(parsed)
       this.wake()
+    }
+  }
+
+  private append(commits: CommitSummary[]): void {
+    for (const commit of commits) {
+      if (!this.bySha.has(commit.sha)) this.indexBySha.set(commit.sha, this.commits.length)
+      this.bySha.set(commit.sha, commit)
+      this.commits.push(commit)
     }
   }
 
@@ -153,6 +163,22 @@ export class LogStream {
     return this.bySha.has(sha)
   }
 
+  /**
+   * Position of a commit in the walk, or -1 when it is not in it.
+   *
+   * A ref tip can be anywhere in a history the renderer has only paged the
+   * front of, so this waits for the walk to reach it rather than answering from
+   * what happens to be buffered. `-1` is a real answer: a ref can point at a
+   * commit that `--all` does not reach, and the walk stops at `MAX_COMMITS`.
+   */
+  async indexOf(sha: string): Promise<number> {
+    while (!this.finished && !this.failure && !this.indexBySha.has(sha)) {
+      await new Promise<void>((resolve) => this.waiters.push(resolve))
+    }
+    if (this.failure) throw Object.assign(new Error(this.failure.message), { info: this.failure })
+    return this.indexBySha.get(sha) ?? -1
+  }
+
   get error(): GitTreeError | null {
     return this.failure
   }
@@ -163,9 +189,4 @@ export class LogStream {
     this.finished = true
     this.wake()
   }
-}
-
-function index(commits: CommitSummary[], map: Map<string, CommitSummary>): CommitSummary[] {
-  for (const commit of commits) map.set(commit.sha, commit)
-  return commits
 }

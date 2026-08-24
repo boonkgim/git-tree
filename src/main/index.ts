@@ -204,6 +204,11 @@ function buildMenu(): void {
           accelerator: 'F5',
           click: () => mainWindow?.webContents.send('menu:refresh')
         },
+        {
+          label: 'Branches Sidebar',
+          accelerator: 'CmdOrCtrl+B',
+          click: () => mainWindow?.webContents.send('menu:toggle-sidebar')
+        },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },

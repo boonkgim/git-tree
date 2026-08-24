@@ -6,6 +6,7 @@ import type {
   DiffOptions,
   FilePatch,
   HistoryPage,
+  RefEntry,
   RepoInfo,
   Result,
   Selection,
@@ -28,6 +29,12 @@ const api = {
 
   historyPage: (id: string, offset: number, limit: number): Promise<Result<HistoryPage>> =>
     ipcRenderer.invoke('history:page', id, offset, limit),
+
+  listRefs: (id: string): Promise<Result<RefEntry[]>> => ipcRenderer.invoke('refs:list', id),
+
+  /** Where a commit sits in the history walk, or -1 if it is not in it. */
+  historyIndexOf: (id: string, sha: string): Promise<Result<number>> =>
+    ipcRenderer.invoke('history:index-of', id, sha),
 
   statusSummary: (id: string): Promise<Result<WorkingSummary>> =>
     ipcRenderer.invoke('status:summary', id),
@@ -79,7 +86,13 @@ const api = {
 
   /** Menu commands, forwarded so the renderer owns all UI decisions. */
   onMenu: (fn: (command: string, argument?: string) => void): (() => void) => {
-    const channels = ['menu:open-repo', 'menu:close-repo', 'menu:refresh', 'menu:open-path']
+    const channels = [
+      'menu:open-repo',
+      'menu:close-repo',
+      'menu:refresh',
+      'menu:open-path',
+      'menu:toggle-sidebar'
+    ]
     const listeners = channels.map((channel) => {
       const listener = (_e: unknown, argument?: string): void => fn(channel, argument)
       ipcRenderer.on(channel, listener)

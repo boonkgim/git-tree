@@ -4,6 +4,7 @@ import { DiffPanel } from './components/DiffPanel'
 import { FilesPanel } from './components/FilesPanel'
 import { HistoryPanel } from './components/HistoryPanel'
 import { MetadataPanel } from './components/MetadataPanel'
+import { RefsPanel } from './components/RefsPanel'
 import { Splitter } from './components/Splitter'
 import { Welcome } from './components/Welcome'
 import { useGitTree } from './state/store'
@@ -66,6 +67,15 @@ export function App(): JSX.Element {
         </span>
         <div className="grow" />
         <span className="dim small">read-only</span>
+        <button
+          type="button"
+          className={state.sidebarVisible ? 'on' : ''}
+          aria-pressed={state.sidebarVisible}
+          onClick={api.toggleSidebar}
+          title="Show or hide the branch sidebar (Ctrl/Cmd+B)"
+        >
+          Branches
+        </button>
         <button type="button" onClick={api.refresh} title="Refresh (F5)">
           Refresh
         </button>
@@ -85,49 +95,67 @@ export function App(): JSX.Element {
         </div>
       )}
 
-      <div className="layout">
-        <div className="row-history" style={{ height: panels.historyHeight }}>
-          <HistoryPanel api={api} />
-        </div>
-
-        <Splitter
-          orientation="horizontal"
-          value={panels.historyHeight}
-          min={140}
-          max={Math.max(200, window.innerHeight - 260)}
-          onChange={(historyHeight) => setPanels((p) => ({ ...p, historyHeight }))}
-          onCommit={(historyHeight) => persistPanels({ historyHeight })}
-        />
-
-        <div className="row-bottom">
-          <div className="column-left" style={{ width: panels.leftWidth }}>
-            <div className="left-files" style={{ height: panels.filesHeight }}>
-              <FilesPanel api={api} />
+      <div className="workspace">
+        {state.sidebarVisible && (
+          <>
+            <div className="column-sidebar" style={{ width: panels.sidebarWidth }}>
+              <RefsPanel api={api} />
             </div>
             <Splitter
-              orientation="horizontal"
-              value={panels.filesHeight}
-              min={80}
-              max={Math.max(120, window.innerHeight - 400)}
-              onChange={(filesHeight) => setPanels((p) => ({ ...p, filesHeight }))}
-              onCommit={(filesHeight) => persistPanels({ filesHeight })}
+              orientation="vertical"
+              value={panels.sidebarWidth}
+              min={160}
+              max={Math.max(200, window.innerWidth - 480)}
+              onChange={(sidebarWidth) => setPanels((p) => ({ ...p, sidebarWidth }))}
+              onCommit={(sidebarWidth) => persistPanels({ sidebarWidth })}
             />
-            <div className="left-meta">
-              <MetadataPanel api={api} />
-            </div>
+          </>
+        )}
+
+        <div className="layout">
+          <div className="row-history" style={{ height: panels.historyHeight }}>
+            <HistoryPanel api={api} />
           </div>
 
           <Splitter
-            orientation="vertical"
-            value={panels.leftWidth}
-            min={220}
-            max={Math.max(300, window.innerWidth - 360)}
-            onChange={(leftWidth) => setPanels((p) => ({ ...p, leftWidth }))}
-            onCommit={(leftWidth) => persistPanels({ leftWidth })}
+            orientation="horizontal"
+            value={panels.historyHeight}
+            min={140}
+            max={Math.max(200, window.innerHeight - 260)}
+            onChange={(historyHeight) => setPanels((p) => ({ ...p, historyHeight }))}
+            onCommit={(historyHeight) => persistPanels({ historyHeight })}
           />
 
-          <div className="column-right">
-            <DiffPanel api={api} />
+          <div className="row-bottom">
+            <div className="column-left" style={{ width: panels.leftWidth }}>
+              <div className="left-files" style={{ height: panels.filesHeight }}>
+                <FilesPanel api={api} />
+              </div>
+              <Splitter
+                orientation="horizontal"
+                value={panels.filesHeight}
+                min={80}
+                max={Math.max(120, window.innerHeight - 400)}
+                onChange={(filesHeight) => setPanels((p) => ({ ...p, filesHeight }))}
+                onCommit={(filesHeight) => persistPanels({ filesHeight })}
+              />
+              <div className="left-meta">
+                <MetadataPanel api={api} />
+              </div>
+            </div>
+
+            <Splitter
+              orientation="vertical"
+              value={panels.leftWidth}
+              min={220}
+              max={Math.max(300, window.innerWidth - 360)}
+              onChange={(leftWidth) => setPanels((p) => ({ ...p, leftWidth }))}
+              onCommit={(leftWidth) => persistPanels({ leftWidth })}
+            />
+
+            <div className="column-right">
+              <DiffPanel api={api} />
+            </div>
           </div>
         </div>
       </div>

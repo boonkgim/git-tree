@@ -5,6 +5,7 @@ import {
   DEFAULT_DIFF_OPTIONS,
   DEFAULT_FILES_VIEW,
   DEFAULT_PANELS,
+  DEFAULT_SIDEBAR_VISIBLE,
   type Settings
 } from '@shared/types'
 
@@ -16,7 +17,8 @@ function defaults(): Settings {
     recents: [],
     window: { width: 1440, height: 900, maximized: false },
     diff: { ...DEFAULT_DIFF_OPTIONS },
-    filesView: DEFAULT_FILES_VIEW
+    filesView: DEFAULT_FILES_VIEW,
+    sidebarVisible: DEFAULT_SIDEBAR_VISIBLE
   }
 }
 
@@ -42,6 +44,7 @@ function coerce(raw: unknown): Settings {
 
   if (input.panels) {
     base.panels = {
+      sidebarWidth: clampNumber(input.panels.sidebarWidth, 140, 4000, base.panels.sidebarWidth),
       historyHeight: clampNumber(input.panels.historyHeight, 120, 4000, base.panels.historyHeight),
       leftWidth: clampNumber(input.panels.leftWidth, 200, 4000, base.panels.leftWidth),
       filesHeight: clampNumber(input.panels.filesHeight, 80, 4000, base.panels.filesHeight)
@@ -69,6 +72,7 @@ function coerce(raw: unknown): Settings {
     }
   }
   if (input.filesView === 'flat' || input.filesView === 'tree') base.filesView = input.filesView
+  if (typeof input.sidebarVisible === 'boolean') base.sidebarVisible = input.sidebarVisible
   return base
 }
 
