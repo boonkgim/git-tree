@@ -170,6 +170,36 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
     return rows.findIndex((row) => row.kind === 'file' && row.file.path === state.selectedPath)
   }, [tree, rows, files, state.selectedPath])
 
+  // The file rows the arrow keys walk, in the order they are painted: in tree
+  // view that skips directory rows and anything folded away inside them.
+  const filePaths = useMemo(
+    () =>
+      tree
+        ? rows.flatMap((row) => (row.kind === 'file' ? [row.file.path] : []))
+        : files.map((file) => file.path),
+    [tree, rows, files]
+  )
+
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+      if (filePaths.length === 0) return
+      event.preventDefault()
+      const down = event.key === 'ArrowDown'
+      const current = state.selectedPath ? filePaths.indexOf(state.selectedPath) : -1
+      // With nothing selected — or with the selected file hidden inside a folded
+      // directory — the first press lands on the near end of the list.
+      const next =
+        current === -1
+          ? down
+            ? 0
+            : filePaths.length - 1
+          : Math.min(Math.max(current + (down ? 1 : -1), 0), filePaths.length - 1)
+      selectFile(filePaths[next])
+    },
+    [filePaths, state.selectedPath, selectFile]
+  )
+
   const anyExpanded = useMemo(
     () => (tree ? rows.some((row) => row.kind === 'dir' && !row.collapsed) : false),
     [tree, rows]
@@ -286,14 +316,16 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           {note}
         </p>
       ))}
-      <VirtualList
-        count={tree ? rows.length : files.length}
-        rowHeight={ROW_HEIGHT}
-        scrollToIndex={selectedIndex}
-        empty={empty}
-      >
-        {tree ? renderTreeRow : renderFlatRow}
-      </VirtualList>
+      <div className="files-body" tabIndex={0} onKeyDown={onKeyDown}>
+        <VirtualList
+          count={tree ? rows.length : files.length}
+          rowHeight={ROW_HEIGHT}
+          scrollToIndex={selectedIndex}
+          empty={empty}
+        >
+          {tree ? renderTreeRow : renderFlatRow}
+        </VirtualList>
+      </div>
     </section>
   )
 }

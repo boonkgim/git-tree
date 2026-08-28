@@ -487,6 +487,13 @@ select {
 
 /* ----------------------------------------------------------- changed files */
 
+.files-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  outline: none;
+}
+
 .frow {
   display: flex;
   align-items: center;
