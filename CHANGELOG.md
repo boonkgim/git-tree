@@ -17,11 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panel, and its width and visibility are persisted with the other panel sizes. Jumping to a ref
   whose tip is below the loaded history pages the walk in first, so it works at any depth.
 - **Previews for images, video and audio in the diff panel.** Selecting a changed file whose
-  format the renderer can draw shows the *before* and *after* versions side by side — with byte
-  sizes, pixel dimensions and a chequerboard behind transparency — instead of the byte-count
-  summary a binary diff used to give. Video and audio get the browser's own controls, an added or
-  deleted file shows the one side that exists and says why the other is empty, and SVG is
-  previewed as well as diffed as text. Sides are read with `git cat-file blob` (or from the
+  format the renderer can draw shows the *before* and *after* versions stacked, before above after
+  — with byte sizes, pixel dimensions and a chequerboard behind transparency — instead of the
+  byte-count summary a binary diff used to give. Video and audio get the browser's own controls,
+  an added or deleted file shows only the version that exists, and SVG is previewed as well as
+  diffed as text. Sides are read with `git cat-file blob` (or from the
   working tree, for the "now" side) and capped at 8 MB each.
 - **Opening changed files and folders on the desktop.** Double-clicking a file row in the
   changed-files panel opens the working-tree file with your default application; a folder row in

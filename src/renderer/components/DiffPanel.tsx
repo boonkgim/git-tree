@@ -46,20 +46,21 @@ function formatBytes(bytes: number | null): string {
 }
 
 /**
- * One side of a media file: the picture itself, or a plain statement of why
- * there is none. Image dimensions are read off the element once it has loaded,
- * because they are the thing a reader is usually comparing.
+ * One side of a media file. Image dimensions are read off the element once it
+ * has loaded, because they are the thing a reader is usually comparing.
+ *
+ * Only a side that exists is ever rendered: an added file has no "before" to
+ * draw, and an empty frame beside the new picture would be a placeholder for
+ * something that was never there.
  */
 function MediaPane({
   label,
   side,
-  media,
-  absentText
+  media
 }: {
   label: string
   side: MediaSide
   media: MediaPreview
-  absentText: string
 }): JSX.Element {
   const [size, setSize] = useState<{ width: number; height: number } | null>(null)
 
@@ -75,9 +76,7 @@ function MediaPane({
         )}
       </figcaption>
 
-      {!side.present ? (
-        <p className="dim media-absent">{absentText}</p>
-      ) : !side.dataUrl ? (
+      {!side.dataUrl ? (
         <p className="dim media-absent">Not shown.</p>
       ) : media.kind === 'image' ? (
         <div className="media-frame">
@@ -282,18 +281,23 @@ export function DiffPanel({ api }: { api: AppApi }): JSX.Element {
                 </p>
               ))}
               <div className="media-sides">
-                <MediaPane
-                  label="Before"
-                  side={media.before}
-                  media={media}
-                  absentText="Added in this comparison — there is no earlier version."
-                />
-                <MediaPane
-                  label="After"
-                  side={media.after}
-                  media={media}
-                  absentText="Deleted in this comparison — there is no later version."
-                />
+                {media.before.present && (
+                  <MediaPane
+                    label={media.after.present ? 'Before' : 'Deleted — the last version'}
+                    side={media.before}
+                    media={media}
+                  />
+                )}
+                {media.after.present && (
+                  <MediaPane
+                    label={media.before.present ? 'After' : 'Added — there is no earlier version'}
+                    side={media.after}
+                    media={media}
+                  />
+                )}
+                {!media.before.present && !media.after.present && (
+                  <p className="dim">Nothing to preview in this comparison.</p>
+                )}
               </div>
             </>
           ) : (

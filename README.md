@@ -257,10 +257,14 @@ are decoded lossily with a warning strip so the rest of the file stays readable;
 
 **Images and media are shown, not described.** A binary diff can only say "these bytes differ",
 which for an icon or a screenshot is the one thing the reader already knew, so a file whose
-extension names a format Chromium can draw is previewed as *before* and *after* side by side,
-with each side's byte size and pixel dimensions. Video and audio get the same treatment with the
-browser's own controls. An added or deleted file shows one side and says plainly why the other
-is empty; a chequerboard behind the image keeps a transparent PNG from reading as a blank frame.
+extension names a format Chromium can draw is previewed as *before* stacked above *after*, each
+with its byte size and pixel dimensions. Stacked rather than side by side because this panel is
+the narrow one of the four: two half-width pictures are two pictures too small to compare, while
+one above the other keeps both at full width with the same region at the same horizontal
+position. Video and audio get the same treatment with the browser's own controls. An added or
+deleted file shows only the version that exists, labelled as such, rather than an empty frame
+beside it; a chequerboard behind the image keeps a transparent PNG from reading as a blank
+frame.
 SVG is previewed *and* diffed as text, because it is both.
 
 **The preview is by extension, and deliberately conservative.** Git records no media type, so

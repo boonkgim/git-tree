@@ -1069,14 +1069,17 @@ select {
   max-height: none;
   border-bottom: 0;
 }
+/* Stacked, not side by side: the panel is the narrow one of the four, and two
+   half-width pictures are two pictures too small to compare. One above the
+   other keeps both at the panel's full width and puts the changed region of
+   each at the same horizontal position. */
 .media-sides {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 12px;
-  align-items: flex-start;
 }
 .media-pane {
-  flex: 1 1 240px;
+  flex: none;
   min-width: 0;
   margin: 0;
 }
