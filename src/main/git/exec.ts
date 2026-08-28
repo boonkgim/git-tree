@@ -187,7 +187,35 @@ export function setGitBinary(path: string): void {
  * interpolated command line, so paths and refs containing spaces, quotes, or
  * shell metacharacters are simply data.
  */
-export function runGit(cwd: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
+export async function runGit(
+  cwd: string,
+  args: string[],
+  options: RunOptions = {}
+): Promise<RunResult> {
+  const { stdout, stderr, code, truncated } = await runGitBuffer(cwd, args, options)
+  const { text, nonUtf8 } = decodeUtf8(stdout)
+  return { stdout: text, stderr, code, nonUtf8, truncated }
+}
+
+/** What `runGitBuffer` resolves with: the same run, with stdout left as bytes. */
+export interface RawResult {
+  stdout: Buffer
+  stderr: string
+  code: number
+  truncated: boolean
+}
+
+/**
+ * The same run as `runGit`, with stdout handed back as bytes.
+ *
+ * `cat-file blob` on an image is the case this exists for: decoding those bytes
+ * as UTF-8 would corrupt them, and the caller wants the file, not text.
+ */
+export function runGitBuffer(
+  cwd: string,
+  args: string[],
+  options: RunOptions = {}
+): Promise<RawResult> {
   assertReadOnly(args)
 
   const maxBuffer = options.maxBuffer ?? DEFAULT_MAX_BUFFER
@@ -195,7 +223,7 @@ export function runGit(cwd: string, args: string[], options: RunOptions = {}): P
   const okCodes = options.okExitCodes ?? [0]
   const full = [...FORCED_CONFIG, ...args]
 
-  return new Promise<RunResult>((resolve, reject) => {
+  return new Promise<RawResult>((resolve, reject) => {
     const child = spawn(gitBinary, full, {
       cwd,
       env: childEnv(),
@@ -259,13 +287,12 @@ export function runGit(cwd: string, args: string[], options: RunOptions = {}): P
       if (settled) return
       settled = true
       clearTimeout(timer)
-      const stdoutBuf = Buffer.concat(out)
-      const { text, nonUtf8 } = decodeUtf8(stdoutBuf)
+      const stdout = Buffer.concat(out)
       const stderr = Buffer.concat(err).toString('utf8').trim()
       const exit = code ?? 0
 
       if (truncated || okCodes.includes(exit)) {
-        resolve({ stdout: text, stderr, code: exit, nonUtf8, truncated })
+        resolve({ stdout, stderr, code: exit, truncated })
         return
       }
       reject(

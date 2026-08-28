@@ -64,7 +64,8 @@ function FileRow({
   showDir,
   indent,
   selected,
-  onSelect
+  onSelect,
+  onOpen
 }: {
   file: ChangedFile
   name: string
@@ -72,6 +73,7 @@ function FileRow({
   indent: number
   selected: boolean
   onSelect: (path: string) => void
+  onOpen: (path: string) => void
 }): JSX.Element {
   const { dir } = splitPath(file.path)
 
@@ -80,7 +82,8 @@ function FileRow({
       className={`frow${selected ? ' selected' : ''}`}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + indent }}
       onMouseDown={() => onSelect(file.path)}
-      title={rowTitle(file)}
+      onDoubleClick={() => onOpen(file.path)}
+      title={`${rowTitle(file)}\nDouble-click to open in the default application`}
     >
       <span className={`status status-${file.status}`} title={STATUS_TITLE[file.status]}>
         {STATUS_LETTER[file.status]}
@@ -95,18 +98,37 @@ function FileRow({
   )
 }
 
+/** A small folder glyph, drawn rather than typed so it looks the same everywhere. */
+function FolderIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+        d="M1.4 12.4V3.6h4.2l1.4 1.6h7.6v7.2z"
+      />
+    </svg>
+  )
+}
+
 function DirRow({
+  path,
   label,
   depth,
   collapsed,
   fileCount,
-  onToggle
+  onToggle,
+  onOpen
 }: {
+  path: string
   label: string
   depth: number
   collapsed: boolean
   fileCount: number
   onToggle: () => void
+  onOpen: (path: string) => void
 }): JSX.Element {
   return (
     <div
@@ -118,13 +140,31 @@ function DirRow({
       <span className="twisty">{collapsed ? '▸' : '▾'}</span>
       <span className="dname">{label}</span>
       {collapsed && <span className="counts dim">{fileCount}</span>}
+      <button
+        type="button"
+        className="open-folder"
+        title={`Open ${path} in the default file manager`}
+        aria-label={`Open ${path} in the default file manager`}
+        // The row itself folds on mouse-down, so the button has to claim the
+        // event before that happens.
+        onMouseDown={(event) => {
+          event.stopPropagation()
+          event.preventDefault()
+        }}
+        onClick={(event) => {
+          event.stopPropagation()
+          onOpen(path)
+        }}
+      >
+        <FolderIcon />
+      </button>
     </div>
   )
 }
 
 /** The files touched by whatever is selected in the history. */
 export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
-  const { state, selectFile, setFilesView } = api
+  const { state, selectFile, setFilesView, openInWorkingTree } = api
   const files = state.files?.files ?? []
   const tree = state.filesView === 'tree'
 
@@ -222,10 +262,11 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           indent={0}
           selected={file.path === state.selectedPath}
           onSelect={selectFile}
+          onOpen={openInWorkingTree}
         />
       )
     },
-    [files, state.selectedPath, selectFile]
+    [files, state.selectedPath, selectFile, openInWorkingTree]
   )
 
   const renderTreeRow = useCallback(
@@ -236,11 +277,13 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
         return (
           <DirRow
             key={`d:${row.path}`}
+            path={row.path}
             label={row.label}
             depth={row.depth}
             collapsed={row.collapsed}
             fileCount={row.fileCount}
             onToggle={() => toggleDir(row.path)}
+            onOpen={openInWorkingTree}
           />
         )
       }
@@ -253,10 +296,11 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           indent={row.depth * INDENT}
           selected={row.file.path === state.selectedPath}
           onSelect={selectFile}
+          onOpen={openInWorkingTree}
         />
       )
     },
-    [rows, state.selectedPath, selectFile, toggleDir]
+    [rows, state.selectedPath, selectFile, toggleDir, openInWorkingTree]
   )
 
   const empty = state.filesError ? (
@@ -316,6 +360,7 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           {note}
         </p>
       ))}
+      {state.openNote && <p className="note">{state.openNote}</p>}
       <div className="files-body" tabIndex={0} onKeyDown={onKeyDown}>
         <VirtualList
           count={tree ? rows.length : files.length}

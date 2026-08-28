@@ -111,7 +111,10 @@ this was developed and packaged on.
 | Click, plain | Collapses back to a single selection |
 | `↑` / `↓` | Move the selection |
 | **Flat** / **Tree** in the changed-files header | Switch between one row per file and a directory tree |
+| Select an image, video or sound file | Both sides are previewed in the diff panel instead of a byte count |
+| Double-click a file row | Opens the working-tree file in your desktop's default application |
 | Click a folder row | Fold it shut; the header's ⊟ / ⊞ folds or opens all of them |
+| The folder button on a folder row | Opens that directory in your desktop's file manager |
 | Click a branch, remote or tag in the sidebar | Moves the history to the commit it points at |
 | Type in the sidebar's filter, then `Enter` | Jumps to the first match; `Esc` clears the filter |
 | `Ctrl/Cmd+B` | Show or hide the sidebar |
@@ -178,6 +181,21 @@ chosen to ignore are usually the same ones in the next comparison. The selected 
 when the selection moves, but never when the folded set itself changes, so folding shut the
 directory you are looking at does not spring straight back open.
 
+**Double-click opens the file; folders get a button.** Reading a diff and then wanting the file
+itself — in an editor, an image viewer, a PDF reader — is the commonest thing this application
+cannot do for you, and handing the path to the desktop is one line rather than a second file
+manager. Double-click is the gesture every file list already uses, so a single click still only
+selects. A folder row has no equivalent gesture that is not already taken by folding, so it gets
+a small button instead, shown when the pointer is over the row.
+
+**What opens is the working tree, always.** There is no path to the version inside a commit —
+that content lives in the object store — so opening acts on what is on disk now. A file that
+only exists in the commit being shown (a deleted file, or a path that has since moved) says so
+in a note rather than opening something else. This is the one place the application asks the
+operating system to act on a file: `shell.openPath` launches whatever handler the desktop has
+registered, exactly as a double-click in a file manager would, and the path is resolved against
+the repository root and refused if it lands outside it before anything is opened.
+
 **The tree is flattened back into rows before it is drawn.** The panel is windowed like every
 other list here, and windowing needs an addressable array, not a nested structure to walk on
 every scroll.
@@ -230,11 +248,31 @@ matters here.
 **Context is adjustable** (3 / 10 / 25 / whole file) by re-running the diff with a different
 `-U`, and whitespace can be ignored (`--ignore-all-space`). Both are per-session and persisted.
 
-**Degradation is explicit, never blank.** Binary files report their sizes; submodules show the
+**Degradation is explicit, never blank.** Binary files report their sizes (or, when they are
+images or media, are previewed — see below); submodules show the
 commit they point at with a chip; symlinks say they are symlinks and show the target; mode
 changes show `100644 → 100755`; a missing trailing newline is marked on its line; non-UTF-8 bytes
 are decoded lossily with a warning strip so the rest of the file stays readable; patches over
 2 MB are withheld behind a "Show it anyway" button.
+
+**Images and media are shown, not described.** A binary diff can only say "these bytes differ",
+which for an icon or a screenshot is the one thing the reader already knew, so a file whose
+extension names a format Chromium can draw is previewed as *before* and *after* side by side,
+with each side's byte size and pixel dimensions. Video and audio get the same treatment with the
+browser's own controls. An added or deleted file shows one side and says plainly why the other
+is empty; a chequerboard behind the image keeps a transparent PNG from reading as a blank frame.
+SVG is previewed *and* diffed as text, because it is both.
+
+**The preview is by extension, and deliberately conservative.** Git records no media type, so
+the extension is the only signal available before the bytes are read; the table lists only the
+formats the renderer displays natively, and anything else — `.psd`, `.tiff`, `.heic` — keeps the
+old size summary rather than producing an empty frame. Each side is capped at 8 MB, because the
+bytes cross the IPC boundary as a `data:` URL and are therefore held in both processes; past
+that the panel states the size, exactly as it did before previews existed. The renderer is still
+given no filesystem access: the main process reads the blob with `git cat-file blob` (or, for
+the working-tree side, from disk under the same containment check as everything else) and hands
+back a data URL, and the page's CSP allows `data:` for `img-src` and `media-src` only. An SVG
+inside an `<img>` cannot run script, which is why it is drawn that way rather than inlined.
 
 **Untracked files are included** in uncommitted changes, because that is what "uncommitted" means
 to a person. They are in no tree, so `git diff` cannot name them; their patches come from
@@ -302,6 +340,12 @@ and friends, forces `--no-ext-diff --no-textconv` and `diff.external=` so git ne
 you configured on its behalf, and sets **`GIT_OPTIONAL_LOCKS=0`**, without which `git status`
 would refresh and rewrite your index.
 
+Opening a file with the desktop's default application (double-click, or a folder row's button)
+is the one action that leaves the application, and it is still not a write: `shell.openPath`
+hands the path to the registered handler, and `src/main/open.ts` resolves it against the
+repository root and refuses anything outside it — the renderer never gets to name a filesystem
+path. `tests/open-path.test.ts` covers that check.
+
 `tests/exec-guard.test.ts` asserts all of it. The invariant was also checked empirically: a full
 session — every selection case, every file type — leaves the refs, reflog, index (bytes *and*
 mtime), object store, every file under `.git`, and the working tree byte-for-byte identical.
@@ -312,7 +356,7 @@ mtime), object store, every file under `.git`, and the working tree byte-for-byt
 npm test
 ```
 
-166 tests, concentrated where things break silently rather than spread for coverage:
+174 tests, concentrated where things break silently rather than spread for coverage:
 
 - **`parse.test.ts`** — every `git` output parser: log records with multi-parent commits and
   separators inside subjects, `--name-status -z` including the `R096 old new` rename form,
@@ -327,13 +371,19 @@ npm test
 - **`graph.test.ts`** — lane assignment for linear, forked, merged and octopus histories, and
   that incremental assignment matches a single pass.
 - **`worddiff.test.ts`** — intra-line highlighting, including giving up on unrelated lines.
+- **`media.test.ts`** — which extensions are previewed, and that dotfiles and directory names
+  containing a dot do not fool the lookup.
+- **`open-path.test.ts`** — that only paths resolving inside the repository root can be handed
+  to the desktop to open.
 - **`reftree.test.ts`** — the sidebar's grouping, folding, collapsing and filtering, and the
   `for-each-ref` parser: tracking counts, annotated tags peeled to their commit, and tags on a
   tree or a blob left out rather than shown as a row that cannot be jumped to.
 
 ## Known limitations
 
-- Images in binary files are reported by size, not previewed.
+- Media previews cover the formats Chromium draws natively; other binary files are still
+  reported by size alone. Video and audio playback depends on the codecs the Electron build
+  carries.
 - Working-tree changes are picked up on window focus or `F5`, not watched live (see above).
 - Combined diffs for merge commits are not offered; pick a parent instead.
 - One repository per window.

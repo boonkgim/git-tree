@@ -8,6 +8,7 @@ import type {
   PatchKind,
   Selection
 } from '@shared/types'
+import { mediaTypeForPath } from '@shared/media'
 import { wordDiff } from '@shared/worddiff'
 import { runGit } from './exec'
 import { countChanges, parsePatch } from './parse'
@@ -207,7 +208,11 @@ export async function filePatch(session: RepoSession, request: PatchRequest): Pr
       spec.mode === 'working'
         ? await diskSize(cwd, file.path)
         : await blobSize(cwd, spec.target, file.path)
-    notes.push('Binary file — contents are not shown.')
+    notes.push(
+      mediaTypeForPath(file.path)
+        ? 'Binary file — shown below as a preview of each side, since a byte diff says nothing.'
+        : 'Binary file — contents are not shown.'
+    )
   }
 
   if (kind === 'text') highlightPairs(parsed.hunks)

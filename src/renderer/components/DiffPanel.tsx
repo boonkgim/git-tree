@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from 'react'
-import type { DiffHunk, DiffLine, FilePatch } from '@shared/types'
+import { useCallback, useMemo, useState } from 'react'
+import { mediaTypeForPath } from '@shared/media'
+import type { DiffHunk, DiffLine, FilePatch, MediaPreview, MediaSide } from '@shared/types'
 import type { AppApi } from '../state/store'
 import { VirtualList } from './VirtualList'
 
@@ -45,6 +46,74 @@ function formatBytes(bytes: number | null): string {
 }
 
 /**
+ * One side of a media file: the picture itself, or a plain statement of why
+ * there is none. Image dimensions are read off the element once it has loaded,
+ * because they are the thing a reader is usually comparing.
+ */
+function MediaPane({
+  label,
+  side,
+  media,
+  absentText
+}: {
+  label: string
+  side: MediaSide
+  media: MediaPreview
+  absentText: string
+}): JSX.Element {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+
+  return (
+    <figure className="media-pane">
+      <figcaption className="media-label">
+        <span className="dim">{label}</span>
+        {side.present && <span className="mono">{formatBytes(side.bytes)}</span>}
+        {size && (
+          <span className="mono dim">
+            {size.width} × {size.height}
+          </span>
+        )}
+      </figcaption>
+
+      {!side.present ? (
+        <p className="dim media-absent">{absentText}</p>
+      ) : !side.dataUrl ? (
+        <p className="dim media-absent">Not shown.</p>
+      ) : media.kind === 'image' ? (
+        <div className="media-frame">
+          <img
+            src={side.dataUrl}
+            alt={`${label}: ${media.path}`}
+            onLoad={(event) =>
+              setSize({
+                width: event.currentTarget.naturalWidth,
+                height: event.currentTarget.naturalHeight
+              })
+            }
+          />
+        </div>
+      ) : media.kind === 'video' ? (
+        <div className="media-frame">
+          <video
+            src={side.dataUrl}
+            controls
+            preload="metadata"
+            onLoadedMetadata={(event) =>
+              setSize({
+                width: event.currentTarget.videoWidth,
+                height: event.currentTarget.videoHeight
+              })
+            }
+          />
+        </div>
+      ) : (
+        <audio src={side.dataUrl} controls preload="metadata" />
+      )}
+    </figure>
+  )
+}
+
+/**
  * The diff for the selected file.
  *
  * Unified rather than side-by-side: it wastes no horizontal space on a panel
@@ -57,6 +126,14 @@ export function DiffPanel({ api }: { api: AppApi }): JSX.Element {
   const patch = state.patch
   const rows = useMemo(() => flatten(patch), [patch])
   const spec = state.files?.spec
+
+  // A displayable file gets its two sides shown instead of — or, for an SVG,
+  // above — the textual diff. `state.media` can belong to the file that was
+  // selected a moment ago, so it is matched against the current path.
+  const mediaType = state.selectedPath ? mediaTypeForPath(state.selectedPath) : null
+  const media = state.media?.path === state.selectedPath ? state.media : null
+  const previewing = mediaType !== null && (media !== null || state.mediaLoading)
+  const binary = patch?.kind === 'binary' || patch?.kind === 'untracked-binary'
 
   const renderRow = useCallback(
     (index: number) => {
@@ -184,29 +261,65 @@ export function DiffPanel({ api }: { api: AppApi }): JSX.Element {
         </p>
       )}
 
-      {(patch?.kind === 'binary' || patch?.kind === 'untracked-binary') && (
+      {binary && !previewing && (
         <div className="binary-info">
           <div>Before: {formatBytes(patch.oldSize)}</div>
           <div>After: {formatBytes(patch.newSize)}</div>
         </div>
       )}
 
-      <VirtualList
-        count={rows.length}
-        rowHeight={ROW_HEIGHT}
-        className="diff-body"
-        empty={
-          state.patchLoading ? (
-            <p className="dim">Reading diff…</p>
-          ) : !state.selectedPath ? (
-            <p className="dim">Select a file to see its diff.</p>
-          ) : patch ? null : (
-            <p className="dim">No diff to show.</p>
-          )
-        }
-      >
-        {renderRow}
-      </VirtualList>
+      {mediaType && state.mediaError && (
+        <p className="error-text">{state.mediaError.message}</p>
+      )}
+
+      {previewing && (
+        <div className={`media-body${binary ? ' media-only' : ''}`}>
+          {media ? (
+            <>
+              {media.notes.map((note) => (
+                <p className="note" key={note}>
+                  {note}
+                </p>
+              ))}
+              <div className="media-sides">
+                <MediaPane
+                  label="Before"
+                  side={media.before}
+                  media={media}
+                  absentText="Added in this comparison — there is no earlier version."
+                />
+                <MediaPane
+                  label="After"
+                  side={media.after}
+                  media={media}
+                  absentText="Deleted in this comparison — there is no later version."
+                />
+              </div>
+            </>
+          ) : (
+            <p className="dim">Reading preview…</p>
+          )}
+        </div>
+      )}
+
+      {!(previewing && binary) && (
+        <VirtualList
+          count={rows.length}
+          rowHeight={ROW_HEIGHT}
+          className="diff-body"
+          empty={
+            state.patchLoading ? (
+              <p className="dim">Reading diff…</p>
+            ) : !state.selectedPath ? (
+              <p className="dim">Select a file to see its diff.</p>
+            ) : patch ? null : (
+              <p className="dim">No diff to show.</p>
+            )
+          }
+        >
+          {renderRow}
+        </VirtualList>
+      )}
     </section>
   )
 }

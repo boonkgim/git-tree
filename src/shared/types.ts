@@ -250,6 +250,30 @@ export interface FilePatch {
   expandable: boolean
 }
 
+/* ------------------------------------------------------------ media preview */
+
+/** What a previewable file is rendered as. */
+export type MediaKind = 'image' | 'video' | 'audio'
+
+/** One side of a comparison, ready to be handed to an <img>, <video> or <audio>. */
+export interface MediaSide {
+  /** False when the file does not exist on this side (added, or deleted). */
+  present: boolean
+  bytes: number | null
+  /** `data:` URL of the bytes, or null when absent or over the preview limit. */
+  dataUrl: string | null
+}
+
+export interface MediaPreview {
+  path: string
+  kind: MediaKind
+  mime: string
+  before: MediaSide
+  after: MediaSide
+  /** Why a side that exists is not being shown (too large, unreadable). */
+  notes: string[]
+}
+
 /* ---------------------------------------------------------------- settings */
 
 export interface PanelSizes {

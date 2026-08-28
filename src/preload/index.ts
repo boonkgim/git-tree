@@ -6,6 +6,7 @@ import type {
   DiffOptions,
   FilePatch,
   HistoryPage,
+  MediaPreview,
   RefEntry,
   RepoInfo,
   Result,
@@ -72,6 +73,23 @@ const api = {
       return null
     }
   },
+
+  /** Both sides of an image, video or sound file, as `data:` URLs. */
+  mediaPreview: (
+    id: string,
+    selection: Selection,
+    parentIndex: number,
+    file: Pick<ChangedFile, 'path' | 'oldPath' | 'status' | 'untracked'>
+  ): Promise<Result<MediaPreview>> =>
+    ipcRenderer.invoke('diff:media', id, selection, parentIndex, file),
+
+  /**
+   * Opens a path inside the working tree with the desktop's default
+   * application. `relativePath` is relative to the repository root; the main
+   * process refuses anything that resolves outside it.
+   */
+  openInWorkingTree: (id: string, relativePath: string): Promise<Result<null>> =>
+    ipcRenderer.invoke('open:working-tree', id, relativePath),
 
   getSettings: (): Promise<Result<Settings>> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<Settings>): Promise<Result<Settings>> =>

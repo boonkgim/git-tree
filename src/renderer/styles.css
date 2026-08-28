@@ -1028,3 +1028,98 @@ select {
     color: #e2c073;
   }
 }
+
+/* The folder row's "open in the default file manager" button. Kept out of the
+   way until the row is under the pointer, so the tree stays a list of names. */
+.open-folder {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  visibility: hidden;
+}
+.drow:hover .open-folder,
+.open-folder:focus-visible {
+  visibility: visible;
+}
+.open-folder:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+/* ------------------------------------------------------- media preview */
+
+/* Two sides of an image, video or sound file. Sized as a share of the panel
+   rather than in pixels: for a binary file this is the whole body, and for an
+   SVG it sits above the textual diff without crowding it out. */
+.media-body {
+  flex: none;
+  max-height: 45%;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+}
+.media-body.media-only {
+  flex: 1;
+  max-height: none;
+  border-bottom: 0;
+}
+.media-sides {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+.media-pane {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+}
+.media-label {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding-bottom: 4px;
+  font-size: 12px;
+}
+.media-absent {
+  margin: 0;
+  padding: 12px 0;
+  font-size: 12px;
+}
+
+/* The chequerboard is what makes a transparent PNG readable — without it a
+   white logo on a white panel looks like an empty frame. */
+.media-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--panel-head);
+  background-image:
+    linear-gradient(45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--border) 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+.media-frame img,
+.media-frame video {
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  /* Pixel art and icons are usually the small images in a repository, and
+     smoothing them at their natural size hides exactly what changed. */
+  image-rendering: -webkit-optimize-contrast;
+}
+.media-pane audio {
+  width: 100%;
+}

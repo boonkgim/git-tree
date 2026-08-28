@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list and `Enter` takes the first match, `Ctrl/Cmd+B` (or **View → Branches Sidebar**) hides the
   panel, and its width and visibility are persisted with the other panel sizes. Jumping to a ref
   whose tip is below the loaded history pages the walk in first, so it works at any depth.
+- **Previews for images, video and audio in the diff panel.** Selecting a changed file whose
+  format the renderer can draw shows the *before* and *after* versions side by side — with byte
+  sizes, pixel dimensions and a chequerboard behind transparency — instead of the byte-count
+  summary a binary diff used to give. Video and audio get the browser's own controls, an added or
+  deleted file shows the one side that exists and says why the other is empty, and SVG is
+  previewed as well as diffed as text. Sides are read with `git cat-file blob` (or from the
+  working tree, for the "now" side) and capped at 8 MB each.
+- **Opening changed files and folders on the desktop.** Double-clicking a file row in the
+  changed-files panel opens the working-tree file with your default application; a folder row in
+  the tree view carries a small button that opens that directory in your file manager. Opening is
+  still not writing — the path is resolved against the repository root and refused if it lands
+  outside it, and a file that exists only in the commit being shown says so instead of opening
+  something else.
 - A **Flat / Tree** toggle in the changed-files panel. Tree groups the files by directory, folds
   single-child directory chains into one row (`src/renderer/components`), counts the files inside
   a folded directory, and has ⊟ / ⊞ to fold or open everything. Folded directories are remembered

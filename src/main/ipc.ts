@@ -5,6 +5,7 @@ import type {
   DiffOptions,
   FilePatch,
   HistoryPage,
+  MediaPreview,
   RefEntry,
   RepoInfo,
   Result,
@@ -14,11 +15,13 @@ import type {
 } from '@shared/types'
 import { toGitTreeError } from './git/exec'
 import { changedFiles } from './git/files'
+import { mediaPreview } from './git/media'
 import { filePatch } from './git/patch'
 import { listRefs } from './git/refs'
 import { getSession, openRepo, refreshSession } from './git/repo'
 import { readSummary } from './git/status'
 import { commitDetail } from './git/detail'
+import { openInWorkingTree } from './open'
 import { forgetRepo, getSettings, rememberRepo, updateSettings } from './settings'
 import { takePendingRepo, watchRepo } from './index'
 
@@ -115,6 +118,30 @@ export function registerIpc(): void {
       force: boolean
     ): Promise<FilePatch> =>
       filePatch(getSession(id), { selection, parentIndex, file, options, force })
+  )
+
+  // Both sides of an image, video or sound file, as data URLs. Only ever asked
+  // for a path the renderer has already recognised as displayable.
+  handle(
+    'diff:media',
+    async (
+      id: string,
+      selection: Selection,
+      parentIndex: number,
+      file: Parameters<typeof mediaPreview>[1]['file']
+    ): Promise<MediaPreview> =>
+      mediaPreview(getSession(id), { selection, parentIndex, file })
+  )
+
+  // A file or folder from the changed-files panel, handed to the desktop's
+  // default application. The path is relative to the repository root and is
+  // validated against it before anything is opened.
+  handle(
+    'open:working-tree',
+    async (id: string, relativePath: string): Promise<null> => {
+      await openInWorkingTree(getSession(id).info.root, relativePath)
+      return null
+    }
   )
 
   handle('settings:get', (): Settings => getSettings())

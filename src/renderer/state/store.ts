@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { mediaTypeForPath } from '@shared/media'
 import { applyClick, sameNode, selectionsEqual } from '@shared/selection'
 import {
   DEFAULT_DIFF_OPTIONS,
@@ -14,6 +15,7 @@ import {
   type FilesView,
   type GitTreeError,
   type HistoryNode,
+  type MediaPreview,
   type PanelSizes,
   type RefEntry,
   type RepoInfo,
@@ -76,6 +78,11 @@ export interface State {
   /** Set when the user asked for an over-sized patch anyway. */
   forcePatch: boolean
 
+  /** Both sides of the selected file, when it is an image, video or sound. */
+  media: MediaPreview | null
+  mediaLoading: boolean
+  mediaError: GitTreeError | null
+
   detail: CommitDetail | null
   diff: DiffOptions
   /** Flat list or directory tree, in the changed-files panel. */
@@ -87,6 +94,8 @@ export interface State {
   sidebarVisible: boolean
   /** Why the last jump to a ref did not go anywhere. Cleared by the next one. */
   jumpNote: string | null
+  /** Why the last "open in default application" did nothing. Cleared by the next one. */
+  openNote: string | null
 }
 
 const initialState: State = {
@@ -109,13 +118,17 @@ const initialState: State = {
   patchLoading: false,
   patchError: null,
   forcePatch: false,
+  media: null,
+  mediaLoading: false,
+  mediaError: null,
   detail: null,
   diff: { ...DEFAULT_DIFF_OPTIONS },
   filesView: DEFAULT_FILES_VIEW,
   refs: [],
   refsError: null,
   sidebarVisible: DEFAULT_SIDEBAR_VISIBLE,
-  jumpNote: null
+  jumpNote: null,
+  openNote: null
 }
 
 type Action =
@@ -144,8 +157,15 @@ type Action =
   | { type: 'refs-error'; error: GitTreeError }
   | { type: 'sidebar'; visible: boolean }
   | { type: 'jump-note'; note: string | null }
+  | { type: 'open-note'; note: string | null }
+  | { type: 'media-start' }
+  | { type: 'media'; media: MediaPreview }
+  | { type: 'media-error'; error: GitTreeError }
 
 /* ----------------------------------------------------------------- reducer */
+
+/** Dropping a preview is what makes the next one be fetched. */
+const noMedia = { media: null, mediaLoading: false, mediaError: null } as const
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -219,7 +239,14 @@ function reducer(state: State, action: Action): State {
       return { ...state, selection: action.selection, parentIndex: 0, detail: null }
 
     case 'parent-index':
-      return { ...state, parentIndex: action.index, patch: null, patchError: null, patchLoading: false }
+      return {
+        ...state,
+        parentIndex: action.index,
+        patch: null,
+        patchError: null,
+        patchLoading: false,
+        ...noMedia
+      }
 
     case 'files-start':
       return { ...state, filesLoading: true, filesError: null }
@@ -235,12 +262,22 @@ function reducer(state: State, action: Action): State {
         filesLoading: false,
         selectedPath,
         patch: stillThere ? state.patch : null,
-        forcePatch: false
+        forcePatch: false,
+        // The file may be the same name at different content, so a preview is
+        // always re-read; a text file simply never asks for one.
+        ...noMedia
       }
     }
 
     case 'files-error':
-      return { ...state, filesLoading: false, filesError: action.error, files: null, patch: null }
+      return {
+        ...state,
+        filesLoading: false,
+        filesError: action.error,
+        files: null,
+        patch: null,
+        ...noMedia
+      }
 
     case 'select-file':
       return {
@@ -251,7 +288,8 @@ function reducer(state: State, action: Action): State {
         // A request still in flight for the previous file is abandoned by the
         // sequence check, so its loading state must not be left behind.
         patchLoading: false,
-        forcePatch: false
+        forcePatch: false,
+        ...noMedia
       }
 
     case 'patch-start':
@@ -262,6 +300,15 @@ function reducer(state: State, action: Action): State {
 
     case 'patch-error':
       return { ...state, patchLoading: false, patchError: action.error, patch: null }
+
+    case 'media-start':
+      return { ...state, mediaLoading: true, mediaError: null }
+
+    case 'media':
+      return { ...state, media: action.media, mediaLoading: false }
+
+    case 'media-error':
+      return { ...state, mediaLoading: false, mediaError: action.error, media: null }
 
     case 'detail':
       return { ...state, detail: action.detail }
@@ -294,6 +341,10 @@ function reducer(state: State, action: Action): State {
     case 'jump-note':
       if (state.jumpNote === action.note) return state
       return { ...state, jumpNote: action.note }
+
+    case 'open-note':
+      if (state.openNote === action.note) return state
+      return { ...state, openNote: action.note }
   }
 }
 
@@ -339,6 +390,8 @@ export interface AppApi {
   setParentIndex: (index: number) => void
   setDiffOptions: (options: Partial<DiffOptions>) => void
   setFilesView: (view: FilesView) => void
+  /** Opens a working-tree file or folder with the desktop's default application. */
+  openInWorkingTree: (relativePath: string) => void
   loadAnyway: () => void
   savePanels: (panels: PanelSizes) => void
 }
@@ -355,6 +408,7 @@ export function useGitTree(): AppApi {
   const patchSeq = useRef(0)
   const pageSeq = useRef(0)
   const jumpSeq = useRef(0)
+  const mediaSeq = useRef(0)
 
   /* -------- settings -------- */
   useEffect(() => {
@@ -667,6 +721,46 @@ export function useGitTree(): AppApi {
     requestPatch
   ])
 
+  /* -------- the selected file's preview, when it is media -------- */
+
+  // Stated the same way as the patch rule: if the selected file is something
+  // that can be displayed and there is no preview, no error and nothing in
+  // flight, fetch it. A text file never matches, so nothing extra is read for
+  // the overwhelmingly common case.
+  useEffect(() => {
+    if (!state.repo || !state.selection || !state.selectedPath) return
+    if (state.media || state.mediaLoading || state.mediaError) return
+    if (!mediaTypeForPath(state.selectedPath)) return
+    const file = state.files?.files.find((f) => f.path === state.selectedPath)
+    if (!file) return
+
+    const seq = ++mediaSeq.current
+    dispatch({ type: 'media-start' })
+    void window.gitTree
+      .mediaPreview(state.repo.id, state.selection, state.parentIndex, {
+        path: file.path,
+        oldPath: file.oldPath,
+        status: file.status,
+        untracked: file.untracked
+      })
+      .then(unwrap)
+      .then((media: MediaPreview) => {
+        if (seq === mediaSeq.current) dispatch({ type: 'media', media })
+      })
+      .catch((e) => {
+        if (seq === mediaSeq.current) dispatch({ type: 'media-error', error: asError(e) })
+      })
+  }, [
+    state.repo,
+    state.selection,
+    state.parentIndex,
+    state.selectedPath,
+    state.files,
+    state.media,
+    state.mediaLoading,
+    state.mediaError
+  ])
+
   /* -------- external change / menu -------- */
   useEffect(() => {
     const off = window.gitTree.onRepoChanged(({ id, reason }) => {
@@ -757,6 +851,20 @@ export function useGitTree(): AppApi {
     void window.gitTree.setSettings({ diff: next })
   }, [])
 
+  // Opening is the only thing the application asks the desktop to do with a
+  // file. It always acts on the working tree — the version on disk now — since
+  // that is the only version there is a path to; a file that exists only in the
+  // commit being shown says so rather than opening the wrong thing.
+  const openInWorkingTree = useCallback((relativePath: string) => {
+    const repo = stateRef.current.repo
+    if (!repo) return
+    dispatch({ type: 'open-note', note: null })
+    void window.gitTree
+      .openInWorkingTree(repo.id, relativePath)
+      .then(unwrap)
+      .catch((e) => dispatch({ type: 'open-note', note: asError(e).message }))
+  }, [])
+
   const setFilesView = useCallback((view: FilesView) => {
     dispatch({ type: 'files-view', view })
     void window.gitTree.setSettings({ filesView: view })
@@ -789,6 +897,7 @@ export function useGitTree(): AppApi {
     ),
     setDiffOptions,
     setFilesView,
+    openInWorkingTree,
     loadAnyway: useCallback(() => requestPatch(true), [requestPatch]),
     savePanels
   }
