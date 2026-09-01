@@ -42,8 +42,29 @@ sudo dpkg -i release/git-tree-0.1.0-linux-amd64.deb
 
 The AppImage is the portable alternative: one self-contained file that installs and registers
 *nothing*, by design. It runs when executed but will never show up in the applications list,
-and it gets none of the terminal behaviour described below, so prefer the `.deb` unless you
-specifically want a no-install binary.
+and it gets none of the terminal behaviour described below.
+
+### Installing without root
+
+`sudo` needs a password, which rules the `.deb` out of any unattended install (CI, or an agent
+working in this repository). `scripts/install-user.sh` puts the same pieces under your home
+directory instead, from the AppImage:
+
+```bash
+npm run build:linux
+scripts/install-user.sh
+```
+
+It lays the AppImage out as `~/.local/lib/git-tree/git-tree` with the launcher beside it at
+`bin/git-tree`, mirroring the package's own layout so the launcher resolves the binary exactly
+as it does under `/opt`; links `~/.local/bin/git-tree`; and writes the desktop entry and the
+hicolor icons into `~/.local/share`. The result behaves like the packaged install, launcher
+entry included, and needs no password. It is not tracked by `dpkg`, so remove it by deleting
+those paths.
+
+Install it one way or the other, not both. `~/.local` takes precedence over the system copy for
+the command and for the launcher entry alike, so a stale `.deb` underneath is invisible rather
+than broken, but `sudo apt remove git-tree` keeps things honest.
 
 [releases page]: https://github.com/boonkgim/git-tree/releases
 

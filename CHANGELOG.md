@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a folded directory, and has ⊟ / ⊞ to fold or open everything. Folded directories are remembered
   by path across commits, and the selected file is revealed when the selection moves. The choice
   is persisted with the other preferences; flat, which is Git's own order, stays the default.
+- `scripts/install-user.sh`, which installs git-tree for one user without root: the AppImage and
+  the launcher go to `~/.local/lib/git-tree`, laid out as the package lays them out under `/opt`,
+  with the command linked into `~/.local/bin` and the desktop entry and hicolor icons written to
+  `~/.local/share`. The application appears in **Show Applications** exactly as the `.deb` makes
+  it appear — the launcher entry never needed root, only the `/usr` paths did — so an unattended
+  install (CI, or an agent working in this repository) no longer has to stop at a password
+  prompt. `dpkg` does not track it; install one way or the other, not both.
 - A command-line launcher: `/usr/bin/git-tree` now points at a wrapper that starts the app in
   its own session, so running `git-tree .` in a terminal returns to the prompt instead of
   holding the shell until the window is closed. Applies to the `.deb`; the AppImage, being a
