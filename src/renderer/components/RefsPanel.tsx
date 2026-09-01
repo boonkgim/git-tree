@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { allRefGroupKeys, buildRefTreeRows, filterRefs, type RefTreeRow } from '@shared/reftree'
 import type { RefEntry } from '@shared/types'
 import type { AppApi } from '../state/store'
+import { HidePanel } from './HidePanel'
 import { VirtualList } from './VirtualList'
 
 const ROW_HEIGHT = 22
@@ -192,6 +193,7 @@ export function RefsPanel({ api }: { api: AppApi }): JSX.Element {
             {anyExpanded ? '⊟' : '⊞'}
           </button>
         )}
+        <HidePanel api={api} panel="refs" />
       </header>
       <div className="ref-filter">
         <input

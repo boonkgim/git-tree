@@ -138,7 +138,10 @@ this was developed and packaged on.
 | The folder button on a folder row | Opens that directory in your desktop's file manager |
 | Click a branch, remote or tag in the sidebar | Moves the history to the commit it points at |
 | Type in the sidebar's filter, then `Enter` | Jumps to the first match; `Esc` clears the filter |
-| `Ctrl/Cmd+B` | Show or hide the sidebar |
+| The × in a panel's header | Hides that panel |
+| The panel toggles in the title bar | Show or hide any panel; they are how a hidden one comes back |
+| `Ctrl/Cmd+B`, `Ctrl/Cmd+1` / `2` / `3` | Show or hide Branches, History, Changed files, Details |
+| `Ctrl/Cmd+Shift+D` | Focus the diff: hides every other panel, and puts them back |
 | `F5` | Refresh |
 
 The diff panel always states the comparison it is showing in words, so it is never ambiguous
@@ -221,6 +224,29 @@ the repository root and refused if it lands outside it before anything is opened
 other list here, and windowing needs an addressable array, not a nested structure to walk on
 every scroll.
 
+### Hiding panels
+
+**Every panel except the diff can be put away.** The diff is what the window is for and it is
+what grows when anything else goes, so it has no toggle; the other four do. Which panels are
+shown is persisted separately from how big they are, so a panel that is hidden and shown again
+comes back the size it was rather than at a default.
+
+**Hiding is where the panel is; showing is always in the same place.** A panel is hidden by the
+× in its own header, because that is where you notice it is in the way. It cannot come back the
+same way — there is nothing left to click — so the title bar carries a toggle per panel, and the
+View menu the same four as checkboxes with `Ctrl/Cmd+B` and `Ctrl/Cmd+1`/`2`/`3`.
+
+**A splitter is removed with the panel it belonged to.** A splitter resizes the pane before it by
+giving space to the pane after it, so one with nothing visible on its far side is a drag handle
+pulling against the window edge. The rule lives in a single `Panes` helper rather than in each of
+the four places a panel can disappear from.
+
+**Focus the diff is one action, not four.** `Ctrl/Cmd+Shift+D` hides everything but the diff and
+remembers what was there; pressing it again puts exactly that back. Reviewing a large change
+wants the whole window and then wants the panels again a minute later, and doing that by hand
+each way is enough friction that nobody would. Hiding or showing any panel by hand forgets the
+remembered layout, since the arrangement being built by hand is the one to come back to.
+
 ### The branch sidebar
 
 **Selecting a branch moves the view, not the working tree.** This application does not check
@@ -233,7 +259,7 @@ reading history.
 would otherwise have, which is the real argument against it; what it buys is a standing answer
 to "what is in this repository, and where is it relative to its upstream" instead of an answer
 that has to be summoned. `Ctrl/Cmd+B` hides it for the cases where the diff needs the room, and
-that choice is persisted along with its width.
+that choice is persisted along with its width — as it is for every other panel, below.
 
 **Names are grouped on `/`, exactly like the changed-file tree** — `feature/login` and
 `feature/signup` under one `feature` row, single-child chains folded into `release/candidate`.

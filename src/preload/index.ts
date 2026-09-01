@@ -109,7 +109,8 @@ const api = {
       'menu:close-repo',
       'menu:refresh',
       'menu:open-path',
-      'menu:toggle-sidebar'
+      'menu:toggle-panel',
+      'menu:focus-diff'
     ]
     const listeners = channels.map((channel) => {
       const listener = (_e: unknown, argument?: string): void => fn(channel, argument)

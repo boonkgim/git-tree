@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import type { HistoryNode, RefLabel } from '@shared/types'
 import type { AppApi } from '../state/store'
 import { GraphCell, gutterWidth, useGraphRows } from './Graph'
+import { HidePanel } from './HidePanel'
 import { VirtualList } from './VirtualList'
 
 export const HISTORY_ROW_HEIGHT = 26
@@ -172,6 +173,7 @@ export function HistoryPanel({ api }: { api: AppApi }): JSX.Element {
           <span className="hauthor">Author</span>
           <span className="hdate">Date</span>
         </span>
+        <HidePanel api={api} panel="history" />
       </header>
       <div ref={listRef} className="history-body" tabIndex={0} onKeyDown={onKeyDown} role="grid">
         <VirtualList

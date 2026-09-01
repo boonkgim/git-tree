@@ -1,4 +1,5 @@
 import type { AppApi } from '../state/store'
+import { HidePanel } from './HidePanel'
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'full',
@@ -36,6 +37,8 @@ export function MetadataPanel({ api }: { api: AppApi }): JSX.Element {
       <section className="panel panel-meta">
         <header className="panel-head">
           <span className="panel-title">Details</span>
+          <div className="grow" />
+          <HidePanel api={api} panel="metadata" />
         </header>
         <div className="meta-body dim">Nothing selected.</div>
       </section>
@@ -50,6 +53,8 @@ export function MetadataPanel({ api }: { api: AppApi }): JSX.Element {
         <span className="panel-title">
           {isPair ? 'Comparison' : selection.anchor.kind === 'working' ? 'Uncommitted changes' : 'Commit'}
         </span>
+        <div className="grow" />
+        <HidePanel api={api} panel="metadata" />
       </header>
       <div className="meta-body">
         {state.files && <p className="comparison">{state.files.label}</p>}

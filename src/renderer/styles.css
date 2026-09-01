@@ -250,6 +250,11 @@ select {
   min-height: 0;
   display: flex;
 }
+/* The last visible pane in a column takes the space the others left, instead
+   of holding the height it had when something sat below it. */
+.left-files.fill {
+  flex: 1;
+}
 .left-meta {
   flex: 1;
   min-height: 0;
@@ -750,6 +755,19 @@ select {
   font-size: 13px;
   line-height: 1;
   padding: 0 2px;
+}
+
+/* --- panel hiding --- */
+
+.hide-panel {
+  font-size: 15px;
+  padding: 0 2px 2px;
+}
+.hide-panel:hover {
+  color: var(--danger);
+}
+.panel-toggles button {
+  white-space: nowrap;
 }
 
 /* -------------------------------------------------------------- metadata */

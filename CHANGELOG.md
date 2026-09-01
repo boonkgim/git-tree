@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Any panel but the diff can be hidden.** Each panel's header carries an × that puts it away;
+  the title bar carries a toggle per panel, and **View** the same four as checkboxes, with
+  `Ctrl/Cmd+B` for Branches and `Ctrl/Cmd+1` / `2` / `3` for History, Changed files and Details.
+  **View → Focus the Diff** (`Ctrl/Cmd+Shift+D`) hides every other panel and puts back exactly
+  what was there when pressed again. Hiding a panel takes its splitter with it and gives the
+  space to what is left; which panels are shown is persisted separately from their sizes, so one
+  that comes back comes back the size it was. Settings written by an earlier version keep their
+  branch-sidebar choice.
 - A **branch sidebar**: branches, remote-tracking branches and tags, grouped on `/` the way the
   changed-file tree groups directories, with the current branch marked and ahead/behind counts
   against the upstream as of your last fetch. Clicking one moves the history to the commit it

@@ -5,7 +5,8 @@ import {
   DEFAULT_DIFF_OPTIONS,
   DEFAULT_FILES_VIEW,
   DEFAULT_PANELS,
-  DEFAULT_SIDEBAR_VISIBLE,
+  DEFAULT_PANEL_VISIBILITY,
+  PANEL_KEYS,
   type ChangedFile,
   type ChangedFilesResult,
   type CommitDetail,
@@ -16,7 +17,9 @@ import {
   type GitTreeError,
   type HistoryNode,
   type MediaPreview,
+  type PanelKey,
   type PanelSizes,
+  type PanelVisibility,
   type RefEntry,
   type RepoInfo,
   type Result,
@@ -91,7 +94,10 @@ export interface State {
   /** Branches, remote-tracking branches and tags, for the sidebar. */
   refs: RefEntry[]
   refsError: GitTreeError | null
-  sidebarVisible: boolean
+  /** Which panels are on screen. */
+  panelVisibility: PanelVisibility
+  /** What "focus the diff" will put back, or null when it is not on. */
+  panelFocusRestore: PanelVisibility | null
   /** Why the last jump to a ref did not go anywhere. Cleared by the next one. */
   jumpNote: string | null
   /** Why the last "open in default application" did nothing. Cleared by the next one. */
@@ -126,7 +132,8 @@ const initialState: State = {
   filesView: DEFAULT_FILES_VIEW,
   refs: [],
   refsError: null,
-  sidebarVisible: DEFAULT_SIDEBAR_VISIBLE,
+  panelVisibility: { ...DEFAULT_PANEL_VISIBILITY },
+  panelFocusRestore: null,
   jumpNote: null,
   openNote: null
 }
@@ -155,7 +162,7 @@ type Action =
   | { type: 'files-view'; view: FilesView }
   | { type: 'refs'; refs: RefEntry[] }
   | { type: 'refs-error'; error: GitTreeError }
-  | { type: 'sidebar'; visible: boolean }
+  | { type: 'visibility'; visibility: PanelVisibility; focusRestore: PanelVisibility | null }
   | { type: 'jump-note'; note: string | null }
   | { type: 'open-note'; note: string | null }
   | { type: 'media-start' }
@@ -175,7 +182,8 @@ function reducer(state: State, action: Action): State {
         settings: action.settings,
         diff: action.settings.diff,
         filesView: action.settings.filesView,
-        sidebarVisible: action.settings.sidebarVisible
+        panelVisibility: action.settings.panelVisibility,
+        panelFocusRestore: action.settings.panelFocusRestore
       }
 
     case 'opening':
@@ -187,7 +195,8 @@ function reducer(state: State, action: Action): State {
         settings: state.settings,
         diff: state.diff,
         filesView: state.filesView,
-        sidebarVisible: state.sidebarVisible,
+        panelVisibility: state.panelVisibility,
+        panelFocusRestore: state.panelFocusRestore,
         // Refreshing the repository already open re-reads the refs, so keeping
         // the old list until the new one lands means the sidebar does not blink
         // empty every time something touches .git. A *different* repository has
@@ -203,7 +212,8 @@ function reducer(state: State, action: Action): State {
         settings: state.settings,
         diff: state.diff,
         filesView: state.filesView,
-        sidebarVisible: state.sidebarVisible,
+        panelVisibility: state.panelVisibility,
+        panelFocusRestore: state.panelFocusRestore,
         epoch: state.epoch + 1
       }
 
@@ -335,8 +345,12 @@ function reducer(state: State, action: Action): State {
     case 'refs-error':
       return { ...state, refs: [], refsError: action.error }
 
-    case 'sidebar':
-      return { ...state, sidebarVisible: action.visible }
+    case 'visibility':
+      return {
+        ...state,
+        panelVisibility: action.visibility,
+        panelFocusRestore: action.focusRestore
+      }
 
     case 'jump-note':
       if (state.jumpNote === action.note) return state
@@ -384,7 +398,11 @@ export interface AppApi {
   click: (node: HistoryNode, additive: boolean) => void
   /** Moves the history to a ref's tip commit and selects it. */
   jumpToRef: (entry: RefEntry) => void
-  toggleSidebar: () => void
+  /** Shows or hides one panel. */
+  setPanelVisible: (panel: PanelKey, visible: boolean) => void
+  togglePanel: (panel: PanelKey) => void
+  /** Hides every panel but the diff, or puts back what was there before. */
+  focusDiff: () => void
   ensureLoaded: (lastVisible: number) => void
   selectFile: (path: string | null) => void
   setParentIndex: (index: number) => void
@@ -518,11 +536,48 @@ export function useGitTree(): AppApi {
     }
   }, [state.repo, state.commits, state.historyDone, state.loadingPage, loadPage])
 
-  const toggleSidebar = useCallback(() => {
-    const visible = !stateRef.current.sidebarVisible
-    dispatch({ type: 'sidebar', visible })
-    void window.gitTree.setSettings({ sidebarVisible: visible })
-  }, [])
+  /**
+   * The one place panel visibility changes, so the focus-restore memory can
+   * never drift from what is on screen.
+   */
+  const applyVisibility = useCallback(
+    (visibility: PanelVisibility, focusRestore: PanelVisibility | null) => {
+      dispatch({ type: 'visibility', visibility, focusRestore })
+      void window.gitTree.setSettings({
+        panelVisibility: visibility,
+        panelFocusRestore: focusRestore
+      })
+    },
+    []
+  )
+
+  const setPanelVisible = useCallback(
+    (panel: PanelKey, visible: boolean) => {
+      const current = stateRef.current
+      if (current.panelVisibility[panel] === visible) return
+      // Touching a panel by hand ends focus mode: the layout the user is
+      // building now is the one to come back to, not the stale one.
+      applyVisibility({ ...current.panelVisibility, [panel]: visible }, null)
+    },
+    [applyVisibility]
+  )
+
+  const togglePanel = useCallback(
+    (panel: PanelKey) => setPanelVisible(panel, !stateRef.current.panelVisibility[panel]),
+    [setPanelVisible]
+  )
+
+  const focusDiff = useCallback(() => {
+    const current = stateRef.current
+    const anyShown = PANEL_KEYS.some((key) => current.panelVisibility[key])
+    if (anyShown) {
+      applyVisibility({ refs: false, history: false, files: false, metadata: false }, current.panelVisibility)
+      return
+    }
+    // Nothing was remembered when the panels went away one at a time, so
+    // leaving focus mode means showing them all rather than nothing at all.
+    applyVisibility(current.panelFocusRestore ?? { ...DEFAULT_PANEL_VISIBILITY }, null)
+  }, [applyVisibility])
 
   /* -------- jumping to a ref -------- */
 
@@ -787,10 +842,11 @@ export function useGitTree(): AppApi {
       else if (command === 'menu:close-repo') closeRepo()
       else if (command === 'menu:refresh') refresh()
       else if (command === 'menu:open-path' && argument) openPath(argument)
-      else if (command === 'menu:toggle-sidebar') toggleSidebar()
+      else if (command === 'menu:toggle-panel' && argument) togglePanel(argument as PanelKey)
+      else if (command === 'menu:focus-diff') focusDiff()
     })
     return off
-  }, [openPicker, closeRepo, refresh, openPath, toggleSidebar])
+  }, [openPicker, closeRepo, refresh, openPath, togglePanel, focusDiff])
 
   /* -------- derived -------- */
   const hasWorkingRow = state.working?.hasChanges ?? false
@@ -888,7 +944,9 @@ export function useGitTree(): AppApi {
       []
     ),
     jumpToRef,
-    toggleSidebar,
+    setPanelVisible,
+    togglePanel,
+    focusDiff,
     ensureLoaded,
     selectFile: useCallback((path: string | null) => dispatch({ type: 'select-file', path }), []),
     setParentIndex: useCallback(

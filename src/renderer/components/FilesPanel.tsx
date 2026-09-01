@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { allDirPaths, ancestorDirPaths, buildFileTreeRows } from '@shared/filetree'
 import type { ChangedFile, FileStatus } from '@shared/types'
 import type { AppApi } from '../state/store'
+import { HidePanel } from './HidePanel'
 import { VirtualList } from './VirtualList'
 
 const ROW_HEIGHT = 22
@@ -354,6 +355,7 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
             Tree
           </button>
         </div>
+        <HidePanel api={api} panel="files" />
       </header>
       {state.files?.notes.map((note) => (
         <p className="note" key={note}>

@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, shell, session as electronSession } from 'ele
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PANEL_KEYS, PANEL_LABELS, type PanelKey, type PanelVisibility } from '@shared/types'
 import { allSessions, closeAll, getSession } from './git/repo'
 import { registerIpc } from './ipc'
 import { getSettings, loadSettings, updateSettings } from './settings'
@@ -175,8 +176,24 @@ function createWindow(): void {
   else void mainWindow.loadFile(path.join(dirname, '../renderer/index.html'))
 }
 
+/** Shortcuts for the panel toggles, in `PANEL_KEYS` order. */
+const PANEL_ACCELERATORS: Record<PanelKey, string> = {
+  refs: 'CmdOrCtrl+B',
+  history: 'CmdOrCtrl+1',
+  files: 'CmdOrCtrl+2',
+  metadata: 'CmdOrCtrl+3'
+}
+
+/**
+ * Rebuilds the application menu.
+ *
+ * The panel items are checkboxes, and Electron reads `checked` when the menu is
+ * built rather than tracking it, so the menu has to be rebuilt whenever
+ * visibility changes — see `syncMenu`.
+ */
 function buildMenu(): void {
   const isMac = process.platform === 'darwin'
+  const visibility = getSettings().panelVisibility
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
     {
@@ -204,10 +221,23 @@ function buildMenu(): void {
           accelerator: 'F5',
           click: () => mainWindow?.webContents.send('menu:refresh')
         },
+        { type: 'separator' },
+        ...PANEL_KEYS.map((key) => ({
+          label: PANEL_LABELS[key],
+          accelerator: PANEL_ACCELERATORS[key],
+          type: 'checkbox' as const,
+          checked: visibility[key],
+          click: () => mainWindow?.webContents.send('menu:toggle-panel', key)
+        })),
         {
-          label: 'Branches Sidebar',
-          accelerator: 'CmdOrCtrl+B',
-          click: () => mainWindow?.webContents.send('menu:toggle-sidebar')
+          label: 'Focus the Diff',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          type: 'checkbox' as const,
+          // Focus is on exactly when every other panel is away, which is also
+          // true if the user hid them one at a time; the tick means "the diff
+          // has the window to itself", which is the honest reading either way.
+          checked: PANEL_KEYS.every((key) => !visibility[key]),
+          click: () => mainWindow?.webContents.send('menu:focus-diff')
         },
         { type: 'separator' },
         { role: 'resetZoom' },
@@ -220,6 +250,21 @@ function buildMenu(): void {
     { role: 'windowMenu' }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  menuVisibility = visibility
+}
+
+/** The visibility the menu's checkboxes were last built from. */
+let menuVisibility: PanelVisibility | null = null
+
+/**
+ * Rebuilds the menu if, and only if, the panel visibility has moved. Settings
+ * are written on every splitter drag, and rebuilding the whole menu for a panel
+ * that got four pixels wider would be gratuitous.
+ */
+export function syncMenu(): void {
+  const visibility = getSettings().panelVisibility
+  if (menuVisibility && PANEL_KEYS.every((key) => menuVisibility![key] === visibility[key])) return
+  buildMenu()
 }
 
 // Single instance: a second launch focuses the existing window and opens the

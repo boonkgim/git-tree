@@ -4,8 +4,10 @@ import path from 'node:path'
 import {
   DEFAULT_DIFF_OPTIONS,
   DEFAULT_FILES_VIEW,
+  DEFAULT_PANEL_VISIBILITY,
   DEFAULT_PANELS,
-  DEFAULT_SIDEBAR_VISIBLE,
+  PANEL_KEYS,
+  type PanelVisibility,
   type Settings
 } from '@shared/types'
 
@@ -18,7 +20,8 @@ function defaults(): Settings {
     window: { width: 1440, height: 900, maximized: false },
     diff: { ...DEFAULT_DIFF_OPTIONS },
     filesView: DEFAULT_FILES_VIEW,
-    sidebarVisible: DEFAULT_SIDEBAR_VISIBLE
+    panelVisibility: { ...DEFAULT_PANEL_VISIBILITY },
+    panelFocusRestore: null
   }
 }
 
@@ -34,6 +37,17 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.min(Math.max(value, min), max)
     : fallback
+}
+
+/** Reads a stored visibility record, keeping the fallback for anything missing. */
+function coerceVisibility(input: unknown, fallback: PanelVisibility): PanelVisibility {
+  if (typeof input !== 'object' || input === null) return fallback
+  const record = input as Partial<Record<string, unknown>>
+  const result = { ...fallback }
+  for (const key of PANEL_KEYS) {
+    if (typeof record[key] === 'boolean') result[key] = record[key] as boolean
+  }
+  return result
 }
 
 /** Merges stored JSON over the defaults, ignoring anything malformed. */
@@ -72,7 +86,17 @@ function coerce(raw: unknown): Settings {
     }
   }
   if (input.filesView === 'flat' || input.filesView === 'tree') base.filesView = input.filesView
-  if (typeof input.sidebarVisible === 'boolean') base.sidebarVisible = input.sidebarVisible
+  base.panelVisibility = coerceVisibility(input.panelVisibility, base.panelVisibility)
+  // Settings written before panels became individually hideable only knew
+  // about the sidebar; honour that rather than silently reopening a panel the
+  // user had put away.
+  const legacy = (raw as { sidebarVisible?: unknown }).sidebarVisible
+  if (input.panelVisibility === undefined && typeof legacy === 'boolean') {
+    base.panelVisibility.refs = legacy
+  }
+  base.panelFocusRestore = input.panelFocusRestore
+    ? coerceVisibility(input.panelFocusRestore, { ...DEFAULT_PANEL_VISIBILITY })
+    : null
   return base
 }
 

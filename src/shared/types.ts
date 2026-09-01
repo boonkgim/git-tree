@@ -292,7 +292,43 @@ export type FilesView = 'flat' | 'tree'
 
 export const DEFAULT_FILES_VIEW: FilesView = 'flat'
 
-export const DEFAULT_SIDEBAR_VISIBLE = true
+/**
+ * Which panels are on screen.
+ *
+ * The diff has no entry: it is what the window is for, and it is what grows
+ * when anything here is turned off. Sizes are kept separately in `PanelSizes`,
+ * so a panel that is hidden and shown again comes back the size it was.
+ */
+export interface PanelVisibility {
+  /** The branch sidebar. */
+  refs: boolean
+  /** The commit graph. */
+  history: boolean
+  /** The changed-files list. */
+  files: boolean
+  /** The commit details. */
+  metadata: boolean
+}
+
+export type PanelKey = keyof PanelVisibility
+
+/** The order panels are offered in, which is their order on screen. */
+export const PANEL_KEYS: readonly PanelKey[] = ['refs', 'history', 'files', 'metadata']
+
+/** What each panel is called, for menus, toggles and hide buttons. */
+export const PANEL_LABELS: Record<PanelKey, string> = {
+  refs: 'Branches',
+  history: 'History',
+  files: 'Changed files',
+  metadata: 'Details'
+}
+
+export const DEFAULT_PANEL_VISIBILITY: PanelVisibility = {
+  refs: true,
+  history: true,
+  files: true,
+  metadata: true
+}
 
 export interface Settings {
   panels: PanelSizes
@@ -300,8 +336,14 @@ export interface Settings {
   window: { width: number; height: number; x?: number; y?: number; maximized: boolean }
   diff: DiffOptions
   filesView: FilesView
-  /** Whether the branch sidebar is shown. */
-  sidebarVisible: boolean
+  /** Which panels are shown. */
+  panelVisibility: PanelVisibility
+  /**
+   * What to put back when "focus the diff" is turned off, or null when it is
+   * not on. Persisted so that quitting while focused and coming back still
+   * restores the layout the user had rather than everything.
+   */
+  panelFocusRestore: PanelVisibility | null
 }
 
 export const DEFAULT_PANELS: PanelSizes = {

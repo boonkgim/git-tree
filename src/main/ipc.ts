@@ -23,7 +23,7 @@ import { readSummary } from './git/status'
 import { commitDetail } from './git/detail'
 import { openInWorkingTree } from './open'
 import { forgetRepo, getSettings, rememberRepo, updateSettings } from './settings'
-import { takePendingRepo, watchRepo } from './index'
+import { syncMenu, takePendingRepo, watchRepo } from './index'
 
 /**
  * Wraps a handler so the renderer always receives a `Result` and never an
@@ -145,5 +145,10 @@ export function registerIpc(): void {
   )
 
   handle('settings:get', (): Settings => getSettings())
-  handle('settings:set', (patch: Partial<Settings>): Settings => updateSettings(patch))
+  handle('settings:set', (patch: Partial<Settings>): Settings => {
+    const next = updateSettings(patch)
+    // The View menu's panel checkboxes have to follow the window.
+    syncMenu()
+    return next
+  })
 }
