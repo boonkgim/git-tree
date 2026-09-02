@@ -225,8 +225,10 @@ legible.
 **Rows drag out as files.** Reading a diff and then wanting to *do* something with that file in a
 terminal is a path retyped by hand, so the row hands it over: the main process turns the drag
 into an OS file drag, which is what makes a terminal paste the path on drop and every other
-application treat it as the file it is. `text/plain` and `text/uri-list` carry the same absolute
-path for targets that never see that hand-over. It is still only a drag — nothing is copied,
+application treat it as the file it is. The renderer's own drag is cancelled first, which
+matters more than it sounds — left in play the two race, and Chromium's advertises its URL
+flavours and no `text/uri-list`, so an application looking for a file sees nothing it knows
+whenever that one wins. It is still only a drag — nothing is copied,
 moved or written by this application — and the path is checked against the repository root
 before it leaves, exactly as opening is. A file that is not on disk is not draggable. Folder
 rows drag too: folding happens on mouse-down and a drag begins after it, so the two gestures do

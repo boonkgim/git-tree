@@ -78,8 +78,7 @@ function FileRow({
   selected,
   onSelect,
   onOpen,
-  onDrag,
-  absolutePath
+  onDrag
 }: {
   file: ChangedFile
   name: string
@@ -89,7 +88,6 @@ function FileRow({
   onSelect: (path: string) => void
   onOpen: (path: string) => void
   onDrag: (path: string) => void
-  absolutePath: (path: string) => string
 }): JSX.Element {
   const { dir } = splitPath(file.path)
   const draggable = onDisk(file)
@@ -103,15 +101,13 @@ function FileRow({
       draggable={draggable}
       onDragStart={(event) => {
         if (!draggable) return
-        // The main process takes the drag over as an OS file drag, which is
-        // what makes a terminal paste the path on drop. These types are set
-        // first so that a target which never sees that hand-over — a plain
-        // text field, an editor that only reads the clipboard flavour — still
-        // gets the same path rather than nothing.
-        const absolute = absolutePath(file.path)
-        event.dataTransfer.effectAllowed = 'copy'
-        event.dataTransfer.setData('text/plain', absolute)
-        event.dataTransfer.setData('text/uri-list', `file://${encodeURI(absolute)}`)
+        // Cancel the drag the renderer would run, so the only one left is the
+        // OS file drag the main process starts. Leaving both in play is a race:
+        // Chromium's own drag advertises its URL flavours (`_NETSCAPE_URL`,
+        // `text/x-moz-url`) and no `text/uri-list`, so whichever won decided
+        // whether the receiving application saw a file at all — which is why
+        // one terminal would take the drop and the next would ignore it.
+        event.preventDefault()
         onDrag(file.path)
       }}
       title={`${rowTitle(file)}\nDouble-click to open in the default application${
@@ -155,8 +151,7 @@ function DirRow({
   fileCount,
   onToggle,
   onOpen,
-  onDrag,
-  absolutePath
+  onDrag
 }: {
   path: string
   label: string
@@ -167,7 +162,6 @@ function DirRow({
   onToggle: () => void
   onOpen: (path: string) => void
   onDrag: (path: string) => void
-  absolutePath: (path: string) => string
 }): JSX.Element {
   return (
     <div
@@ -179,10 +173,9 @@ function DirRow({
       // gestures do not compete: a drag leaves the row folded as it found it.
       draggable
       onDragStart={(event) => {
-        const absolute = absolutePath(path)
-        event.dataTransfer.effectAllowed = 'copy'
-        event.dataTransfer.setData('text/plain', absolute)
-        event.dataTransfer.setData('text/uri-list', `file://${encodeURI(absolute)}`)
+        // See the file row: the renderer's own drag is cancelled so that the
+        // main process's OS file drag is the only one in play.
+        event.preventDefault()
         onDrag(path)
       }}
       title={`${collapsed ? `Expand ${label}` : `Collapse ${label}`}${
@@ -228,7 +221,6 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
     setShowIgnored,
     openInWorkingTree,
     startDrag,
-    absolutePath,
     retryFiles
   } = api
   const all = state.filesScope === 'all'
@@ -336,11 +328,10 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           onSelect={selectFile}
           onOpen={openInWorkingTree}
           onDrag={startDrag}
-          absolutePath={absolutePath}
         />
       )
     },
-    [files, state.selectedPath, selectFile, openInWorkingTree, startDrag, absolutePath]
+    [files, state.selectedPath, selectFile, openInWorkingTree, startDrag]
   )
 
   const renderTreeRow = useCallback(
@@ -360,8 +351,7 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
             onToggle={() => toggleDir(row.path)}
             onOpen={openInWorkingTree}
             onDrag={startDrag}
-            absolutePath={absolutePath}
-          />
+            />
         )
       }
       return (
@@ -375,11 +365,10 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           onSelect={selectFile}
           onOpen={openInWorkingTree}
           onDrag={startDrag}
-          absolutePath={absolutePath}
         />
       )
     },
-    [rows, state.selectedPath, selectFile, toggleDir, openInWorkingTree, startDrag, absolutePath]
+    [rows, state.selectedPath, selectFile, toggleDir, openInWorkingTree, startDrag]
   )
 
   const empty = error ? (

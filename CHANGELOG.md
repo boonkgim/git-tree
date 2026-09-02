@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dragging a row out started two competing drags, so whether a drop worked was a race.**
+  Handing the drag to the main process starts an OS file drag, but the renderer's own drag was
+  never cancelled, so both ran. Chromium's advertises its URL flavours (`_NETSCAPE_URL`,
+  `text/x-moz-url`) and no `text/uri-list` at all, so an application looking for a file — which
+  is what a terminal that pastes a path is doing — saw nothing it recognised whenever that one
+  won. `dragstart` now calls `preventDefault`, as Electron's own guidance says to, leaving the
+  file drag as the only one: the drop offers `text/uri-list` with a `file://` URI, the same
+  shape a file manager provides.
 - **A git that could not be started reached the panels as a bare `spawn ENOTCONN`.** `spawn`
   reports a failure to start two ways: asynchronously on the child's `error` event, and
   synchronously out of the call itself when the stdio pipes cannot be set up, which is what a
@@ -37,8 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Ignored files, and directories holding nothing but ignored files, fade instead.
 - **Dragging a file row out of the panel.** The main process turns the drag into an OS file drag,
   so dropping it on a terminal pastes that file's path and every other application receives it as
-  the file it is; `text/plain` and `text/uri-list` carry the same absolute path for targets that
-  never see that hand-over. Folder rows drag out the same way. Nothing is copied, moved or written, and the path is checked against
+  the file it is. Folder rows drag out the same way. Nothing is copied, moved or written, and the path is checked against
   the repository root before it leaves, exactly as opening is.
 - **Any panel but the diff can be hidden.** Each panel's header carries an × that puts it away;
   the title bar carries a toggle per panel, and **View** the same four as checkboxes, with

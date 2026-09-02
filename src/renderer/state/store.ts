@@ -555,11 +555,6 @@ export interface AppApi {
    * terminal — which pastes its path — or on any other application.
    */
   startDrag: (relativePath: string) => void
-  /**
-   * A repository-relative path as the absolute one it names on disk. Only for
-   * putting a path in front of the user — nothing here reaches the filesystem.
-   */
-  absolutePath: (relativePath: string) => string
   /** Opens a working-tree file or folder with the desktop's default application. */
   openInWorkingTree: (relativePath: string) => void
   loadAnyway: () => void
@@ -1145,21 +1140,6 @@ export function useGitTree(): AppApi {
     if (repo) window.gitTree.startDrag(repo.id, relativePath)
   }, [])
 
-  // Git reports '/'-separated paths everywhere, including on Windows, where the
-  // root it is joined to is '\'-separated; a path handed to another
-  // application has to be spelled the way that platform spells one.
-  const root = state.repo?.root ?? ''
-  const absolutePath = useCallback(
-    (relativePath: string) => {
-      if (!root) return relativePath
-      const windows = /^[a-zA-Z]:\\/.test(root) || root.startsWith('\\\\')
-      const sep = windows ? '\\' : '/'
-      const tail = windows ? relativePath.replace(/\//g, '\\') : relativePath
-      return `${root.replace(/[/\\]$/, '')}${sep}${tail}`
-    },
-    [root]
-  )
-
   return {
     state,
     hasWorkingRow,
@@ -1193,7 +1173,6 @@ export function useGitTree(): AppApi {
     retryFiles,
     setShowIgnored,
     startDrag,
-    absolutePath,
     openInWorkingTree,
     loadAnyway: useCallback(() => requestPatch(true), [requestPatch]),
     savePanels
