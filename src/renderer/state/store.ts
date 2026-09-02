@@ -3,6 +3,7 @@ import { mediaTypeForPath } from '@shared/media'
 import { applyClick, sameNode, selectionsEqual } from '@shared/selection'
 import {
   DEFAULT_DIFF_OPTIONS,
+  DEFAULT_FILES_SCOPE,
   DEFAULT_FILES_VIEW,
   DEFAULT_PANELS,
   DEFAULT_PANEL_VISIBILITY,
@@ -13,6 +14,7 @@ import {
   type CommitSummary,
   type DiffOptions,
   type FilePatch,
+  type FilesScope,
   type FilesView,
   type GitTreeError,
   type HistoryNode,
@@ -25,6 +27,7 @@ import {
   type Result,
   type Selection,
   type Settings,
+  type WorkingFilesResult,
   type WorkingSummary
 } from '@shared/types'
 
@@ -74,6 +77,11 @@ export interface State {
   filesLoading: boolean
   filesError: GitTreeError | null
 
+  /** Every file on disk, for the all-files scope. Null until it is asked for. */
+  workingFiles: WorkingFilesResult | null
+  workingFilesLoading: boolean
+  workingFilesError: GitTreeError | null
+
   selectedPath: string | null
   patch: FilePatch | null
   patchLoading: boolean
@@ -90,6 +98,10 @@ export interface State {
   diff: DiffOptions
   /** Flat list or directory tree, in the changed-files panel. */
   filesView: FilesView
+  /** Files this comparison touched, or every file in the working tree. */
+  filesScope: FilesScope
+  /** Whether the all-files scope lists `.gitignore`d files too. */
+  showIgnored: boolean
 
   /** Branches, remote-tracking branches and tags, for the sidebar. */
   refs: RefEntry[]
@@ -119,6 +131,9 @@ const initialState: State = {
   files: null,
   filesLoading: false,
   filesError: null,
+  workingFiles: null,
+  workingFilesLoading: false,
+  workingFilesError: null,
   selectedPath: null,
   patch: null,
   patchLoading: false,
@@ -130,6 +145,8 @@ const initialState: State = {
   detail: null,
   diff: { ...DEFAULT_DIFF_OPTIONS },
   filesView: DEFAULT_FILES_VIEW,
+  filesScope: DEFAULT_FILES_SCOPE,
+  showIgnored: false,
   refs: [],
   refsError: null,
   panelVisibility: { ...DEFAULT_PANEL_VISIBILITY },
@@ -160,6 +177,12 @@ type Action =
   | { type: 'detail'; detail: CommitDetail | null }
   | { type: 'diff-options'; options: Partial<DiffOptions> }
   | { type: 'files-view'; view: FilesView }
+  | { type: 'files-scope'; scope: FilesScope }
+  | { type: 'show-ignored'; show: boolean }
+  | { type: 'working-files-start' }
+  | { type: 'working-files'; files: WorkingFilesResult }
+  | { type: 'working-files-error'; error: GitTreeError }
+  | { type: 'working-files-stale' }
   | { type: 'refs'; refs: RefEntry[] }
   | { type: 'refs-error'; error: GitTreeError }
   | { type: 'visibility'; visibility: PanelVisibility; focusRestore: PanelVisibility | null }
@@ -168,6 +191,42 @@ type Action =
   | { type: 'media-start' }
   | { type: 'media'; media: MediaPreview }
   | { type: 'media-error'; error: GitTreeError }
+
+/* --------------------------------------------------------------- selectors */
+
+/**
+ * The file list the panel is showing.
+ *
+ * Everything downstream of a file click — the patch, the media preview, the
+ * arrow keys — reads the list through this rather than through `state.files`,
+ * so the two scopes cannot drift apart into two half-wired code paths.
+ */
+export function activeFiles(state: State): ChangedFile[] {
+  return state.filesScope === 'all'
+    ? (state.workingFiles?.files ?? [])
+    : (state.files?.files ?? [])
+}
+
+/** The working tree against HEAD, which is what the all-files scope compares. */
+const WORKING_SELECTION: Selection = { anchor: { kind: 'working' } }
+
+/**
+ * The comparison a file click resolves against.
+ *
+ * In the all-files scope the list is a picture of the disk and the statuses on
+ * it are working-tree statuses, so its diffs have to be working-tree diffs too;
+ * showing a file marked "modified" against a commit from last March would be
+ * a row and a panel disagreeing about what they mean. A file the working tree
+ * has not touched is shown as its own contents, which `filePatch` handles.
+ */
+function activeSelection(state: State): Selection | null {
+  return state.filesScope === 'all' ? WORKING_SELECTION : state.selection
+}
+
+/** Merges only ever have a parent to choose in the comparison scope. */
+function activeParentIndex(state: State): number {
+  return state.filesScope === 'all' ? 0 : state.parentIndex
+}
 
 /* ----------------------------------------------------------------- reducer */
 
@@ -182,6 +241,8 @@ function reducer(state: State, action: Action): State {
         settings: action.settings,
         diff: action.settings.diff,
         filesView: action.settings.filesView,
+        filesScope: action.settings.filesScope,
+        showIgnored: action.settings.showIgnored,
         panelVisibility: action.settings.panelVisibility,
         panelFocusRestore: action.settings.panelFocusRestore
       }
@@ -195,6 +256,8 @@ function reducer(state: State, action: Action): State {
         settings: state.settings,
         diff: state.diff,
         filesView: state.filesView,
+        filesScope: state.filesScope,
+        showIgnored: state.showIgnored,
         panelVisibility: state.panelVisibility,
         panelFocusRestore: state.panelFocusRestore,
         // Refreshing the repository already open re-reads the refs, so keeping
@@ -212,6 +275,8 @@ function reducer(state: State, action: Action): State {
         settings: state.settings,
         diff: state.diff,
         filesView: state.filesView,
+        filesScope: state.filesScope,
+        showIgnored: state.showIgnored,
         panelVisibility: state.panelVisibility,
         panelFocusRestore: state.panelFocusRestore,
         epoch: state.epoch + 1
@@ -262,6 +327,12 @@ function reducer(state: State, action: Action): State {
       return { ...state, filesLoading: true, filesError: null }
 
     case 'files': {
+      // The comparison is still read in the all-files scope — the metadata
+      // panel names it — but it is not what the panel is listing there, so it
+      // must not move the selection out from under the list that is.
+      if (state.filesScope !== 'changed') {
+        return { ...state, files: action.files, filesLoading: false }
+      }
       // Keep the user on the same file across refreshes when it still exists.
       const stillThere =
         state.selectedPath && action.files.files.some((f) => f.path === state.selectedPath)
@@ -285,8 +356,9 @@ function reducer(state: State, action: Action): State {
         filesLoading: false,
         filesError: action.error,
         files: null,
-        patch: null,
-        ...noMedia
+        // Same reasoning as above: a comparison that failed says nothing about
+        // the file the all-files scope is showing.
+        ...(state.filesScope === 'changed' ? { patch: null, ...noMedia } : {})
       }
 
     case 'select-file':
@@ -338,6 +410,64 @@ function reducer(state: State, action: Action): State {
       // Purely a way of drawing the same list: nothing is re-queried, and the
       // selected file stays selected across the switch.
       return { ...state, filesView: action.view }
+
+    case 'files-scope':
+      if (action.scope === state.filesScope) return state
+      // The two scopes answer different questions, so the same file means a
+      // different diff on either side of the switch: the comparison's patch in
+      // one, the uncommitted one in the other. The selection is kept — it is
+      // usually the file the user is reading — and the patch is dropped, which
+      // is what makes it be fetched again under the new rule.
+      return {
+        ...state,
+        filesScope: action.scope,
+        patch: null,
+        patchError: null,
+        patchLoading: false,
+        forcePatch: false,
+        ...noMedia
+      }
+
+    case 'show-ignored':
+      if (action.show === state.showIgnored) return state
+      // Dropping the list is what makes it be read again with the new flag.
+      return { ...state, showIgnored: action.show, workingFiles: null, workingFilesError: null }
+
+    case 'working-files-start':
+      return { ...state, workingFilesLoading: true, workingFilesError: null }
+
+    case 'working-files': {
+      // Same rule as the comparison list: stay on the file the user is reading
+      // when it survived, otherwise fall to the top of the list.
+      const stillThere =
+        state.selectedPath && action.files.files.some((f) => f.path === state.selectedPath)
+      const selectedPath = stillThere ? state.selectedPath : (action.files.files[0]?.path ?? null)
+      if (state.filesScope !== 'all') {
+        return { ...state, workingFiles: action.files, workingFilesLoading: false }
+      }
+      return {
+        ...state,
+        workingFiles: action.files,
+        workingFilesLoading: false,
+        selectedPath,
+        patch: stillThere ? state.patch : null,
+        forcePatch: false,
+        ...noMedia
+      }
+    }
+
+    case 'working-files-stale':
+      // Dropping the list is what makes it be read again; see the fetch rule.
+      return { ...state, workingFiles: null, workingFilesError: null }
+
+    case 'working-files-error':
+      return {
+        ...state,
+        workingFilesLoading: false,
+        workingFilesError: action.error,
+        workingFiles: null,
+        ...(state.filesScope === 'all' ? { patch: null, ...noMedia } : {})
+      }
 
     case 'refs':
       return { ...state, refs: action.refs, refsError: null }
@@ -408,6 +538,20 @@ export interface AppApi {
   setParentIndex: (index: number) => void
   setDiffOptions: (options: Partial<DiffOptions>) => void
   setFilesView: (view: FilesView) => void
+  /** Switches the panel between this comparison's files and every file on disk. */
+  setFilesScope: (scope: FilesScope) => void
+  /** In the all-files scope, whether `.gitignore`d files are listed too. */
+  setShowIgnored: (show: boolean) => void
+  /**
+   * Hands a working-tree file to the OS as a drag, so it can be dropped on a
+   * terminal — which pastes its path — or on any other application.
+   */
+  startDrag: (relativePath: string) => void
+  /**
+   * A repository-relative path as the absolute one it names on disk. Only for
+   * putting a path in front of the user — nothing here reaches the filesystem.
+   */
+  absolutePath: (relativePath: string) => string
   /** Opens a working-tree file or folder with the desktop's default application. */
   openInWorkingTree: (relativePath: string) => void
   loadAnyway: () => void
@@ -427,6 +571,7 @@ export function useGitTree(): AppApi {
   const pageSeq = useRef(0)
   const jumpSeq = useRef(0)
   const mediaSeq = useRef(0)
+  const workingFilesSeq = useRef(0)
 
   /* -------- settings -------- */
   useEffect(() => {
@@ -702,6 +847,37 @@ export function useGitTree(): AppApi {
       })
   }, [state.repo, state.selection, state.parentIndex, state.diff, state.epoch])
 
+  /* -------- every file on disk -------- */
+
+  // Stated as a condition on the state rather than as a reaction, for the same
+  // reason the patch rule is: if the all-files scope is showing and there is no
+  // list, no error and nothing in flight, read one. Anything that invalidates
+  // the list — a refresh, the ignored toggle, the repository changing on disk —
+  // does so by setting it back to null.
+  useEffect(() => {
+    if (!state.repo || state.filesScope !== 'all') return
+    if (state.workingFiles || state.workingFilesLoading || state.workingFilesError) return
+    const seq = ++workingFilesSeq.current
+    dispatch({ type: 'working-files-start' })
+    void window.gitTree
+      .workingFiles(state.repo.id, state.showIgnored)
+      .then(unwrap)
+      .then((files) => {
+        if (seq === workingFilesSeq.current) dispatch({ type: 'working-files', files })
+      })
+      .catch((e) => {
+        if (seq === workingFilesSeq.current)
+          dispatch({ type: 'working-files-error', error: asError(e) })
+      })
+  }, [
+    state.repo,
+    state.filesScope,
+    state.showIgnored,
+    state.workingFiles,
+    state.workingFilesLoading,
+    state.workingFilesError
+  ])
+
   /* -------- commit metadata -------- */
   useEffect(() => {
     const { repo, selection } = state
@@ -729,15 +905,16 @@ export function useGitTree(): AppApi {
   /* -------- the selected file's patch -------- */
   const requestPatch = useCallback((force: boolean) => {
     const s = stateRef.current
-    const file = s.files?.files.find((f) => f.path === s.selectedPath)
-    if (!s.repo || !s.selection || !file) return
+    const file = activeFiles(s).find((f) => f.path === s.selectedPath)
+    const selection = activeSelection(s)
+    if (!s.repo || !selection || !file) return
     const seq = ++patchSeq.current
     dispatch({ type: 'patch-start', force })
     void window.gitTree
       .filePatch(
         s.repo.id,
-        s.selection,
-        s.parentIndex,
+        selection,
+        activeParentIndex(s),
         {
           path: file.path,
           oldPath: file.oldPath,
@@ -761,15 +938,17 @@ export function useGitTree(): AppApi {
   // state rather than as a reaction to a particular action means no ordering of
   // clicks, refreshes and in-flight responses can leave the panel empty.
   useEffect(() => {
-    if (!state.repo || !state.selection || !state.selectedPath) return
+    if (!state.repo || !activeSelection(state) || !state.selectedPath) return
     if (state.patch || state.patchLoading || state.patchError) return
-    if (!state.files?.files.some((f) => f.path === state.selectedPath)) return
+    if (!activeFiles(state).some((f) => f.path === state.selectedPath)) return
     requestPatch(false)
   }, [
     state.repo,
     state.selection,
     state.selectedPath,
     state.files,
+    state.workingFiles,
+    state.filesScope,
     state.patch,
     state.patchLoading,
     state.patchError,
@@ -783,16 +962,17 @@ export function useGitTree(): AppApi {
   // flight, fetch it. A text file never matches, so nothing extra is read for
   // the overwhelmingly common case.
   useEffect(() => {
-    if (!state.repo || !state.selection || !state.selectedPath) return
+    const selection = activeSelection(state)
+    if (!state.repo || !selection || !state.selectedPath) return
     if (state.media || state.mediaLoading || state.mediaError) return
     if (!mediaTypeForPath(state.selectedPath)) return
-    const file = state.files?.files.find((f) => f.path === state.selectedPath)
+    const file = activeFiles(state).find((f) => f.path === state.selectedPath)
     if (!file) return
 
     const seq = ++mediaSeq.current
     dispatch({ type: 'media-start' })
     void window.gitTree
-      .mediaPreview(state.repo.id, state.selection, state.parentIndex, {
+      .mediaPreview(state.repo.id, selection, activeParentIndex(state), {
         path: file.path,
         oldPath: file.oldPath,
         status: file.status,
@@ -811,6 +991,8 @@ export function useGitTree(): AppApi {
     state.parentIndex,
     state.selectedPath,
     state.files,
+    state.workingFiles,
+    state.filesScope,
     state.media,
     state.mediaLoading,
     state.mediaError
@@ -823,12 +1005,15 @@ export function useGitTree(): AppApi {
       if (!s.repo || s.repo.id !== id) return
       if (reason === 'focus') {
         // Focus only re-reads the working tree; history cannot change without
-        // something touching .git, which the watcher already covers.
+        // something touching .git, which the watcher already covers. The
+        // all-files list *is* the working tree, though, so it goes stale for
+        // exactly the same reason the summary does.
         void window.gitTree
           .statusSummary(id)
           .then(unwrap)
           .then((working) => dispatch({ type: 'working', working }))
           .catch(() => undefined)
+        if (s.filesScope === 'all') dispatch({ type: 'working-files-stale' })
         return
       }
       refresh()
@@ -926,6 +1111,38 @@ export function useGitTree(): AppApi {
     void window.gitTree.setSettings({ filesView: view })
   }, [])
 
+  const setFilesScope = useCallback((scope: FilesScope) => {
+    dispatch({ type: 'files-scope', scope })
+    void window.gitTree.setSettings({ filesScope: scope })
+  }, [])
+
+  const setShowIgnored = useCallback((show: boolean) => {
+    dispatch({ type: 'show-ignored', show })
+    void window.gitTree.setSettings({ showIgnored: show })
+  }, [])
+
+  // Fire-and-forget: the drag is already underway in the renderer, and the OS
+  // takes it over from the main process. Nothing here can fail usefully.
+  const startDrag = useCallback((relativePath: string) => {
+    const repo = stateRef.current.repo
+    if (repo) window.gitTree.startDrag(repo.id, relativePath)
+  }, [])
+
+  // Git reports '/'-separated paths everywhere, including on Windows, where the
+  // root it is joined to is '\'-separated; a path handed to another
+  // application has to be spelled the way that platform spells one.
+  const root = state.repo?.root ?? ''
+  const absolutePath = useCallback(
+    (relativePath: string) => {
+      if (!root) return relativePath
+      const windows = /^[a-zA-Z]:\\/.test(root) || root.startsWith('\\\\')
+      const sep = windows ? '\\' : '/'
+      const tail = windows ? relativePath.replace(/\//g, '\\') : relativePath
+      return `${root.replace(/[/\\]$/, '')}${sep}${tail}`
+    },
+    [root]
+  )
+
   return {
     state,
     hasWorkingRow,
@@ -955,6 +1172,10 @@ export function useGitTree(): AppApi {
     ),
     setDiffOptions,
     setFilesView,
+    setFilesScope,
+    setShowIgnored,
+    startDrag,
+    absolutePath,
     openInWorkingTree,
     loadAnyway: useCallback(() => requestPatch(true), [requestPatch]),
     savePanels

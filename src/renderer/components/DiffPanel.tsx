@@ -124,7 +124,14 @@ export function DiffPanel({ api }: { api: AppApi }): JSX.Element {
   const { state, setParentIndex, setDiffOptions, loadAnyway } = api
   const patch = state.patch
   const rows = useMemo(() => flatten(patch), [patch])
-  const spec = state.files?.spec
+  // In the all-files scope the panel is showing the working tree, whatever the
+  // history has selected, so it must say so rather than repeat the comparison
+  // label — and there is no merge parent to choose in that scope either.
+  const all = state.filesScope === 'all'
+  const spec = all ? undefined : state.files?.spec
+  const label = all
+    ? 'the working tree, as it is on disk'
+    : (state.files?.label ?? '')
 
   // A displayable file gets its two sides shown instead of — or, for an SVG,
   // above — the textual diff. `state.media` can belong to the file that was
@@ -180,8 +187,8 @@ export function DiffPanel({ api }: { api: AppApi }): JSX.Element {
     <section className="panel panel-diff">
       <header className="panel-head">
         <span className="panel-title">Diff</span>
-        <span className="comparison-inline" title={state.files?.label}>
-          {state.files?.label ?? ''}
+        <span className="comparison-inline" title={label}>
+          {label}
         </span>
         <div className="grow" />
 

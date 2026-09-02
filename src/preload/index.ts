@@ -12,6 +12,7 @@ import type {
   Result,
   Selection,
   Settings,
+  WorkingFilesResult,
   WorkingSummary
 } from '@shared/types'
 
@@ -50,6 +51,13 @@ const api = {
     options: DiffOptions
   ): Promise<Result<ChangedFilesResult>> =>
     ipcRenderer.invoke('diff:files', id, selection, parentIndex, options),
+
+  /**
+   * Every file in the working tree, for the project-pane view. Takes no
+   * selection: it is a picture of the disk, not of a comparison.
+   */
+  workingFiles: (id: string, includeIgnored: boolean): Promise<Result<WorkingFilesResult>> =>
+    ipcRenderer.invoke('files:working', id, includeIgnored),
 
   filePatch: (
     id: string,
@@ -90,6 +98,18 @@ const api = {
    */
   openInWorkingTree: (id: string, relativePath: string): Promise<Result<null>> =>
     ipcRenderer.invoke('open:working-tree', id, relativePath),
+
+  /**
+   * Hands an in-progress drag over to the OS as a file drag, so a row can be
+   * dropped on a terminal — which pastes its path — or on any other
+   * application. Fire-and-forget on purpose: `startDrag` has to run while the
+   * renderer's `dragstart` handler is still on the stack, and awaiting a reply
+   * would be too late. `relativePath` is checked against the repository root in
+   * the main process, exactly as opening is.
+   */
+  startDrag: (id: string, relativePath: string): void => {
+    ipcRenderer.send('drag:start', id, relativePath)
+  },
 
   getSettings: (): Promise<Result<Settings>> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<Settings>): Promise<Result<Settings>> =>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { allDirPaths, ancestorDirPaths, buildFileTreeRows } from '@shared/filetree'
 import type { ChangedFile, FileStatus } from '@shared/types'
-import type { AppApi } from '../state/store'
+import { activeFiles, type AppApi } from '../state/store'
 import { HidePanel } from './HidePanel'
 import { VirtualList } from './VirtualList'
 
@@ -18,6 +18,8 @@ const STATUS_LETTER: Record<FileStatus, string> = {
   typechange: 'T',
   unmerged: 'U',
   untracked: '?',
+  clean: '·',
+  ignored: '!',
   unknown: '·'
 }
 
@@ -30,7 +32,14 @@ const STATUS_TITLE: Record<FileStatus, string> = {
   typechange: 'Type changed',
   unmerged: 'Unresolved conflict',
   untracked: 'Untracked',
+  clean: 'Unchanged since the last commit',
+  ignored: 'Ignored by .gitignore',
   unknown: 'Changed'
+}
+
+/** A file that is only on disk in some other revision cannot be dragged out. */
+function onDisk(file: ChangedFile): boolean {
+  return file.status !== 'deleted'
 }
 
 function splitPath(path: string): { dir: string; name: string } {
@@ -43,13 +52,15 @@ function splitPath(path: string): { dir: string; name: string } {
 }
 
 function rowTitle(file: ChangedFile): string {
-  return file.oldPath
+  const name = file.oldPath
     ? `${file.oldPath} → ${file.path}${file.score ? ` (${file.score}% similar)` : ''}`
     : file.path
+  return `${name}\n${STATUS_TITLE[file.status]}`
 }
 
-function Counts({ file }: { file: ChangedFile }): JSX.Element {
+function Counts({ file }: { file: ChangedFile }): JSX.Element | null {
   if (file.binary) return <span className="counts dim">bin</span>
+  if (file.insertions === null && file.deletions === null) return null
   return (
     <span className="counts">
       {file.insertions ? <span className="plus">+{file.insertions}</span> : null}
@@ -66,7 +77,9 @@ function FileRow({
   indent,
   selected,
   onSelect,
-  onOpen
+  onOpen,
+  onDrag,
+  absolutePath
 }: {
   file: ChangedFile
   name: string
@@ -75,16 +88,35 @@ function FileRow({
   selected: boolean
   onSelect: (path: string) => void
   onOpen: (path: string) => void
+  onDrag: (path: string) => void
+  absolutePath: (path: string) => string
 }): JSX.Element {
   const { dir } = splitPath(file.path)
+  const draggable = onDisk(file)
 
   return (
     <div
-      className={`frow${selected ? ' selected' : ''}`}
+      className={`frow f-${file.status}${selected ? ' selected' : ''}`}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + indent }}
       onMouseDown={() => onSelect(file.path)}
       onDoubleClick={() => onOpen(file.path)}
-      title={`${rowTitle(file)}\nDouble-click to open in the default application`}
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) return
+        // The main process takes the drag over as an OS file drag, which is
+        // what makes a terminal paste the path on drop. These types are set
+        // first so that a target which never sees that hand-over — a plain
+        // text field, an editor that only reads the clipboard flavour — still
+        // gets the same path rather than nothing.
+        const absolute = absolutePath(file.path)
+        event.dataTransfer.effectAllowed = 'copy'
+        event.dataTransfer.setData('text/plain', absolute)
+        event.dataTransfer.setData('text/uri-list', `file://${encodeURI(absolute)}`)
+        onDrag(file.path)
+      }}
+      title={`${rowTitle(file)}\nDouble-click to open in the default application${
+        draggable ? '\nDrag onto a terminal to paste its path' : ''
+      }`}
     >
       <span className={`status status-${file.status}`} title={STATUS_TITLE[file.status]}>
         {STATUS_LETTER[file.status]}
@@ -119,6 +151,7 @@ function DirRow({
   label,
   depth,
   collapsed,
+  ignored,
   fileCount,
   onToggle,
   onOpen
@@ -127,16 +160,19 @@ function DirRow({
   label: string
   depth: number
   collapsed: boolean
+  ignored: boolean
   fileCount: number
   onToggle: () => void
   onOpen: (path: string) => void
 }): JSX.Element {
   return (
     <div
-      className={`frow drow${collapsed ? ' collapsed' : ''}`}
+      className={`frow drow${collapsed ? ' collapsed' : ''}${ignored ? ' dir-ignored' : ''}`}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
       onMouseDown={onToggle}
-      title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
+      title={`${collapsed ? `Expand ${label}` : `Collapse ${label}`}${
+        ignored ? '\nEverything in here is ignored by .gitignore' : ''
+      }`}
     >
       <span className="twisty">{collapsed ? '▸' : '▾'}</span>
       <span className="dname">{label}</span>
@@ -163,11 +199,30 @@ function DirRow({
   )
 }
 
-/** The files touched by whatever is selected in the history. */
+/**
+ * The files touched by whatever is selected in the history, or — in the
+ * all-files scope — every file in the working tree, the way an editor's project
+ * pane lists them.
+ */
 export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
-  const { state, selectFile, setFilesView, openInWorkingTree } = api
-  const files = state.files?.files ?? []
+  const {
+    state,
+    selectFile,
+    setFilesView,
+    setFilesScope,
+    setShowIgnored,
+    openInWorkingTree,
+    startDrag,
+    absolutePath
+  } = api
+  const all = state.filesScope === 'all'
+  const files = activeFiles(state)
   const tree = state.filesView === 'tree'
+
+  const loading = all ? state.workingFilesLoading : state.filesLoading
+  const error = all ? state.workingFilesError : state.filesError
+  const notes = (all ? state.workingFiles?.notes : state.files?.notes) ?? []
+  const truncated = (all ? state.workingFiles?.truncated : state.files?.truncated) ?? false
 
   // Which directories are folded shut. Keyed by path, so it survives switching
   // commits: the directories a user has chosen to ignore are usually the same
@@ -264,10 +319,12 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           selected={file.path === state.selectedPath}
           onSelect={selectFile}
           onOpen={openInWorkingTree}
+          onDrag={startDrag}
+          absolutePath={absolutePath}
         />
       )
     },
-    [files, state.selectedPath, selectFile, openInWorkingTree]
+    [files, state.selectedPath, selectFile, openInWorkingTree, startDrag, absolutePath]
   )
 
   const renderTreeRow = useCallback(
@@ -282,6 +339,7 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
             label={row.label}
             depth={row.depth}
             collapsed={row.collapsed}
+            ignored={row.ignored}
             fileCount={row.fileCount}
             onToggle={() => toggleDir(row.path)}
             onOpen={openInWorkingTree}
@@ -298,16 +356,20 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
           selected={row.file.path === state.selectedPath}
           onSelect={selectFile}
           onOpen={openInWorkingTree}
+          onDrag={startDrag}
+          absolutePath={absolutePath}
         />
       )
     },
-    [rows, state.selectedPath, selectFile, toggleDir, openInWorkingTree]
+    [rows, state.selectedPath, selectFile, toggleDir, openInWorkingTree, startDrag, absolutePath]
   )
 
-  const empty = state.filesError ? (
-    <p className="error-text">{state.filesError.message}</p>
-  ) : state.filesLoading ? (
+  const empty = error ? (
+    <p className="error-text">{error.message}</p>
+  ) : loading ? (
     <p className="dim">Reading…</p>
+  ) : all ? (
+    <p className="dim">This working tree has no files in it.</p>
   ) : state.files?.spec.mode === 'empty' ? (
     <p className="dim">{state.files.label}</p>
   ) : (
@@ -317,12 +379,28 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
   return (
     <section className="panel panel-files">
       <header className="panel-head">
-        <span className="panel-title">Changed files</span>
+        <span className="panel-title">{all ? 'All files' : 'Changed files'}</span>
         <span className="dim">
           {files.length.toLocaleString()}
-          {state.files?.truncated ? '+' : ''}
+          {truncated ? '+' : ''}
         </span>
         <div className="grow" />
+
+        {all && (
+          <button
+            type="button"
+            className={`link icon-button${state.showIgnored ? ' on' : ' dim'}`}
+            aria-pressed={state.showIgnored}
+            onClick={() => setShowIgnored(!state.showIgnored)}
+            title={
+              state.showIgnored
+                ? 'Stop listing files ignored by .gitignore'
+                : 'List files ignored by .gitignore too'
+            }
+          >
+            !
+          </button>
+        )}
 
         {tree && files.length > 0 && (
           <button
@@ -334,6 +412,27 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
             {anyExpanded ? '⊟' : '⊞'}
           </button>
         )}
+
+        <div className="segmented" role="group" aria-label="Which files are listed">
+          <button
+            type="button"
+            className={all ? '' : 'on'}
+            aria-pressed={!all}
+            onClick={() => setFilesScope('changed')}
+            title="Only the files this comparison touched"
+          >
+            Changed
+          </button>
+          <button
+            type="button"
+            className={all ? 'on' : ''}
+            aria-pressed={all}
+            onClick={() => setFilesScope('all')}
+            title="Every file in the working tree, including untracked ones"
+          >
+            All
+          </button>
+        </div>
 
         <div className="segmented" role="group" aria-label="Changed-file layout">
           <button
@@ -357,7 +456,7 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
         </div>
         <HidePanel api={api} panel="files" />
       </header>
-      {state.files?.notes.map((note) => (
+      {notes.map((note) => (
         <p className="note" key={note}>
           {note}
         </p>

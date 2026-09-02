@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   ChangedFile,
@@ -10,11 +10,12 @@ import type {
 } from '@shared/types'
 import { mediaTypeForPath } from '@shared/media'
 import { wordDiff } from '@shared/worddiff'
-import { runGit } from './exec'
+import { decodeUtf8, runGit } from './exec'
 import { countChanges, parsePatch } from './parse'
 import type { RepoSession } from './repo'
 import { buildDiffArgs, buildUntrackedPatchArgs } from './selection'
 import { resolve } from './files'
+import { resolveInsideRoot } from '../open'
 
 /**
  * Above this many bytes a patch is not worth rendering: the file is almost
@@ -117,11 +118,23 @@ export async function filePatch(session: RepoSession, request: PatchRequest): Pr
     expandable: options.context !== 'all'
   }
 
+  const limit = request.force ? PATCH_HARD_LIMIT : PATCH_SOFT_LIMIT
+
+  // A file the all-files view listed but this comparison never touched has no
+  // diff to show, and "no changes" is a poor answer to a click in a project
+  // pane. Show the file itself instead: the same reader, every line as context.
+  //
+  // This is decided before the comparison is: in a clean working tree the spec
+  // is `empty`, and "there is nothing to compare" is not an answer to a click
+  // on a file that is sitting right there on disk.
+  if (file.status === 'clean' || file.status === 'ignored') {
+    return fileContents(cwd, base, file.path, limit)
+  }
+
   if (spec.mode === 'empty') {
     return { ...base, notes: [spec.reason] }
   }
 
-  const limit = request.force ? PATCH_HARD_LIMIT : PATCH_SOFT_LIMIT
   let stdout: string
   let nonUtf8 = false
   let truncated = false
@@ -235,3 +248,98 @@ export async function filePatch(session: RepoSession, request: PatchRequest): Pr
 }
 
 export type { DiffSpec }
+
+/**
+ * The working-tree file, rendered as a patch of nothing but context lines.
+ *
+ * Still a read of the file the user can already see in their editor, and still
+ * bounded by the same size limit as a diff: a project pane must not be able to
+ * turn a click on a 200 MB asset into a frozen window.
+ */
+async function fileContents(
+  cwd: string,
+  base: FilePatch,
+  path: string,
+  limit: number
+): Promise<FilePatch> {
+  const target = resolveInsideRoot(cwd, path)
+
+  let bytes: Buffer
+  let size: number | null
+  try {
+    size = await diskSize(cwd, path)
+    if (size !== null && size > limit) {
+      return {
+        ...base,
+        kind: 'too-large',
+        newSize: size,
+        notes: [
+          `This file is larger than ${Math.round(limit / 1024 / 1024)} MB and was not rendered.`
+        ]
+      }
+    }
+    bytes = await readFile(target)
+  } catch {
+    return {
+      ...base,
+      notes: [`${path} could not be read from the working tree.`]
+    }
+  }
+
+  const unchanged = 'Unchanged in this comparison — showing the file as it is on disk.'
+
+  // A NUL in the first few kilobytes is what git itself treats as "binary", and
+  // it is the only test that does not require decoding the whole file first.
+  if (bytes.subarray(0, 8000).includes(0)) {
+    return {
+      ...base,
+      kind: 'binary',
+      newSize: size,
+      notes: [
+        unchanged,
+        mediaTypeForPath(path)
+          ? 'Binary file — shown below as a preview.'
+          : 'Binary file — contents are not shown.'
+      ]
+    }
+  }
+
+  const { text, nonUtf8 } = decodeUtf8(bytes)
+  // A trailing newline ends the last line rather than starting an empty one.
+  const content = text.endsWith('\n') ? text.slice(0, -1) : text
+  const lines = content === '' ? [] : content.split('\n')
+
+  const notes = [unchanged]
+  if (nonUtf8) {
+    notes.push(
+      'This file is not valid UTF-8. Invalid bytes are shown as \u{FFFD} so the rest stays readable.'
+    )
+  }
+
+  return {
+    ...base,
+    kind: 'contents',
+    newSize: size,
+    hunks:
+      lines.length === 0
+        ? []
+        : [
+            {
+              header: '',
+              oldStart: 1,
+              oldLines: lines.length,
+              newStart: 1,
+              newLines: lines.length,
+              lines: lines.map((line, i) => ({
+                type: 'context' as const,
+                oldNumber: i + 1,
+                newNumber: i + 1,
+                content: line
+              }))
+            }
+          ],
+    notes,
+    nonUtf8,
+    expandable: false
+  }
+}

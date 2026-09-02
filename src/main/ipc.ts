@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, nativeImage } from 'electron'
 import type {
   ChangedFilesResult,
   CommitDetail,
@@ -11,6 +11,7 @@ import type {
   Result,
   Selection,
   Settings,
+  WorkingFilesResult,
   WorkingSummary
 } from '@shared/types'
 import { toGitTreeError } from './git/exec'
@@ -21,7 +22,8 @@ import { listRefs } from './git/refs'
 import { getSession, openRepo, refreshSession } from './git/repo'
 import { readSummary } from './git/status'
 import { commitDetail } from './git/detail'
-import { openInWorkingTree } from './open'
+import { workingFiles } from './git/working'
+import { openInWorkingTree, resolveInsideRoot } from './open'
 import { forgetRepo, getSettings, rememberRepo, updateSettings } from './settings'
 import { syncMenu, takePendingRepo, watchRepo } from './index'
 
@@ -107,6 +109,14 @@ export function registerIpc(): void {
       changedFiles(getSession(id), selection, parentIndex, options)
   )
 
+  // Every file on disk, for the project-pane view. Independent of the history
+  // selection: it is a picture of the working tree, not of a comparison.
+  handle(
+    'files:working',
+    async (id: string, includeIgnored: boolean): Promise<WorkingFilesResult> =>
+      workingFiles(getSession(id), includeIgnored === true)
+  )
+
   handle(
     'diff:file',
     async (
@@ -144,11 +154,57 @@ export function registerIpc(): void {
     }
   )
 
+  registerDrag()
+
   handle('settings:get', (): Settings => getSettings())
   handle('settings:set', (patch: Partial<Settings>): Settings => {
     const next = updateSettings(patch)
     // The View menu's panel checkboxes have to follow the window.
     syncMenu()
     return next
+  })
+}
+
+/**
+ * The icon shown under the cursor while a file is being dragged out.
+ *
+ * `startDrag` refuses an empty image, so one has to exist. It is drawn here as
+ * bytes rather than read from `build/` because that directory is a build
+ * resource and is not inside the packaged application; a drag must not depend
+ * on a file that is only there in development. Built once, then reused.
+ */
+let dragIcon: Electron.NativeImage | null = null
+
+/** A 20x20 translucent page glyph in the accent colour. */
+const DRAG_ICON_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAJUlEQVR42mOQy7/5mpqYAcrIoxIeNXDUwFEDRw0cNZDWBlINAwBx1ACKvtlZnwAAAABJRU5ErkJggg=='
+
+function dragImage(): Electron.NativeImage {
+  if (!dragIcon) dragIcon = nativeImage.createFromDataURL(DRAG_ICON_PNG)
+  return dragIcon
+}
+
+/**
+ * Dragging a row out of the changed-files panel.
+ *
+ * This has to be `send` rather than `invoke`: `startDrag` only takes over a
+ * drag that is already underway, so it must run while the renderer's
+ * `dragstart` handler is still on the stack, and awaiting a reply would be too
+ * late. Dropping a file on a terminal is how a terminal is told a path, which
+ * is the whole point — nothing is copied, moved, or written.
+ *
+ * The path is validated against the repository root exactly as opening is: the
+ * renderer is never trusted with a filesystem path.
+ */
+function registerDrag(): void {
+  ipcMain.on('drag:start', (event, id: string, relativePath: string) => {
+    try {
+      const session = getSession(id)
+      const file = resolveInsideRoot(session.info.root, relativePath)
+      event.sender.startDrag({ file, icon: dragImage() })
+    } catch {
+      // A drag that cannot start is a drag that does nothing. There is no
+      // sensible place to report it, and it must not take the window down.
+    }
   })
 }

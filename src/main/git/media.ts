@@ -51,6 +51,22 @@ export async function mediaPreview(
   const { spec } = await resolve(session, request.selection, request.parentIndex)
   const notes: string[] = []
 
+  // A file the all-files view listed but this comparison never touched has no
+  // two sides to compare. Show the one that exists — the file on disk — rather
+  // than an empty frame and a note about a comparison the user did not ask for.
+  if (file.status === 'clean' || file.status === 'ignored') {
+    const after = await sideOnDisk(cwd, file.path, type.mime, notes)
+    return {
+      path: file.path,
+      kind: type.kind,
+      mime: type.mime,
+      before: ABSENT,
+      after,
+      contents: true,
+      notes
+    }
+  }
+
   const before =
     spec.mode === 'empty' || file.untracked || file.status === 'added'
       ? ABSENT
@@ -63,7 +79,7 @@ export async function mediaPreview(
         ? await sideOnDisk(cwd, file.path, type.mime, notes)
         : await sideAt(cwd, spec.target, file.path, type.mime, notes, 'After')
 
-  return { path: file.path, kind: type.kind, mime: type.mime, before, after, notes }
+  return { path: file.path, kind: type.kind, mime: type.mime, before, after, contents: false, notes }
 }
 
 /** One side, read out of the object store at `rev`. */

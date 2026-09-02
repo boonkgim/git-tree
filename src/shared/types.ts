@@ -165,6 +165,10 @@ export type FileStatus =
   | 'typechange'
   | 'unmerged'
   | 'untracked'
+  /** In the working tree and unchanged. Only the all-files view produces these. */
+  | 'clean'
+  /** On disk and ignored by `.gitignore`. Only the all-files view produces these. */
+  | 'ignored'
   | 'unknown'
 
 export interface ChangedFile {
@@ -179,6 +183,22 @@ export interface ChangedFile {
   binary: boolean
   /** True for files present on disk but not in the index. */
   untracked?: boolean
+}
+
+/**
+ * Every file in the working tree, for the all-files view.
+ *
+ * The same `ChangedFile` shape as the comparison list, so one panel, one tree
+ * builder and one diff request path serve both: a file that happens to be
+ * modified carries the status `git status` gave it, and everything else is
+ * `clean` or `ignored`.
+ */
+export interface WorkingFilesResult {
+  files: ChangedFile[]
+  /** True when files ignored by `.gitignore` are included. */
+  includeIgnored: boolean
+  notes: string[]
+  truncated: boolean
 }
 
 export interface ChangedFilesResult {
@@ -222,6 +242,8 @@ export interface DiffHunk {
 
 export type PatchKind =
   | 'text'
+  /** Not a diff at all: the file as it stands on disk, shown as context lines. */
+  | 'contents'
   | 'binary'
   | 'submodule'
   | 'empty'
@@ -270,6 +292,8 @@ export interface MediaPreview {
   mime: string
   before: MediaSide
   after: MediaSide
+  /** True when this is the file as it stands on disk rather than a comparison. */
+  contents: boolean
   /** Why a side that exists is not being shown (too large, unreadable). */
   notes: string[]
 }
@@ -291,6 +315,14 @@ export interface PanelSizes {
 export type FilesView = 'flat' | 'tree'
 
 export const DEFAULT_FILES_VIEW: FilesView = 'flat'
+
+/**
+ * Which files the panel lists: the ones this comparison touched, or everything
+ * in the working tree the way an editor's project pane would show it.
+ */
+export type FilesScope = 'changed' | 'all'
+
+export const DEFAULT_FILES_SCOPE: FilesScope = 'changed'
 
 /**
  * Which panels are on screen.
@@ -336,6 +368,10 @@ export interface Settings {
   window: { width: number; height: number; x?: number; y?: number; maximized: boolean }
   diff: DiffOptions
   filesView: FilesView
+  /** Changed files only, or the whole working tree. */
+  filesScope: FilesScope
+  /** In the all-files view, whether `.gitignore`d files are listed too. */
+  showIgnored: boolean
   /** Which panels are shown. */
   panelVisibility: PanelVisibility
   /**

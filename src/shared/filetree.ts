@@ -22,6 +22,12 @@ export type FileTreeRow =
       collapsed: boolean
       /** Files anywhere beneath it, shown while it is collapsed. */
       fileCount: number
+      /**
+       * True when every file beneath it is ignored by `.gitignore`, so the row
+       * can be faded whole rather than leaving a bright `node_modules` above a
+       * thousand grey children.
+       */
+      ignored: boolean
     }
   | { kind: 'file'; depth: number; file: ChangedFile; name: string }
 
@@ -45,6 +51,17 @@ function countFiles(node: DirNode): number {
   let total = node.files.length
   for (const dir of node.dirs.values()) total += countFiles(dir)
   return total
+}
+
+/**
+ * True when nothing beneath this directory is anything but ignored. An empty
+ * directory cannot occur here — every node exists because a file put it there —
+ * so this never has to decide what an empty one means.
+ */
+function allIgnored(node: DirNode): boolean {
+  for (const entry of node.files) if (entry.file.status !== 'ignored') return false
+  for (const dir of node.dirs.values()) if (!allIgnored(dir)) return false
+  return true
 }
 
 function build(files: ChangedFile[]): DirNode {
@@ -95,7 +112,8 @@ function emit(
       label,
       depth,
       collapsed: isCollapsed,
-      fileCount: countFiles(last)
+      fileCount: countFiles(last),
+      ignored: allIgnored(last)
     })
     if (!isCollapsed) emit(last, depth + 1, collapsed, out)
   }

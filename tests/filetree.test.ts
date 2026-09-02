@@ -110,3 +110,37 @@ describe('ancestorDirPaths', () => {
     expect(ancestorDirPaths([file('README.md')], 'README.md')).toEqual([])
   })
 })
+
+describe('ignored directories', () => {
+  const ignored = (path: string): ChangedFile => ({
+    path,
+    status: 'ignored',
+    insertions: null,
+    deletions: null,
+    binary: false
+  })
+
+  it('marks a directory whose files are all ignored', () => {
+    const rows = buildFileTreeRows([
+      ignored('node_modules/react/index.js'),
+      ignored('node_modules/react/package.json'),
+      file('src/main.ts')
+    ])
+    const dirs = rows.flatMap((row) => (row.kind === 'dir' ? [[row.label, row.ignored]] : []))
+    expect(dirs).toEqual([
+      ['node_modules/react', true],
+      ['src', false]
+    ])
+  })
+
+  it('does not mark a directory that holds one tracked file among ignored ones', () => {
+    const rows = buildFileTreeRows([ignored('build/out.js'), file('build/keep.ts')])
+    const dir = rows.find((row) => row.kind === 'dir')
+    expect(dir).toMatchObject({ label: 'build', ignored: false })
+  })
+
+  it('marks a folded chain of directories that is ignored throughout', () => {
+    const rows = buildFileTreeRows([ignored('a/b/c/x.js')])
+    expect(rows[0]).toMatchObject({ kind: 'dir', label: 'a/b/c', ignored: true })
+  })
+})

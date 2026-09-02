@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkS
 import path from 'node:path'
 import {
   DEFAULT_DIFF_OPTIONS,
+  DEFAULT_FILES_SCOPE,
   DEFAULT_FILES_VIEW,
   DEFAULT_PANEL_VISIBILITY,
   DEFAULT_PANELS,
@@ -20,6 +21,8 @@ function defaults(): Settings {
     window: { width: 1440, height: 900, maximized: false },
     diff: { ...DEFAULT_DIFF_OPTIONS },
     filesView: DEFAULT_FILES_VIEW,
+    filesScope: DEFAULT_FILES_SCOPE,
+    showIgnored: false,
     panelVisibility: { ...DEFAULT_PANEL_VISIBILITY },
     panelFocusRestore: null
   }
@@ -86,6 +89,8 @@ function coerce(raw: unknown): Settings {
     }
   }
   if (input.filesView === 'flat' || input.filesView === 'tree') base.filesView = input.filesView
+  if (input.filesScope === 'changed' || input.filesScope === 'all') base.filesScope = input.filesScope
+  if (typeof input.showIgnored === 'boolean') base.showIgnored = input.showIgnored
   base.panelVisibility = coerceVisibility(input.panelVisibility, base.panelVisibility)
   // Settings written before panels became individually hideable only knew
   // about the sidebar; honour that rather than silently reopening a panel the

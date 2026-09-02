@@ -18,6 +18,16 @@
   --del-strong: #fdb8c0;
   --hunk-bg: #f1f3f5;
   --danger: #b3261e;
+  /* One colour per file status, shared by the status badge and the file name,
+     so a row reads the same whichever half of it the eye lands on first. */
+  --s-added: #2e9e4f;
+  --s-modified: #b8701c;
+  --s-deleted: #c0392b;
+  --s-renamed: #3f7fd4;
+  --s-copied: #3d7a8c;
+  --s-typechange: #7b4bc0;
+  --s-unmerged: #b3261e;
+  --s-untracked: #6b7a1a;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --row-line: 1px solid #eef0f2;
@@ -42,6 +52,15 @@
     --del-strong: #6d2733;
     --hunk-bg: #2a2f35;
     --danger: #ff6b60;
+    /* Lifted off the dark panel: the same hues, at a weight that stays legible. */
+    --s-added: #5fc97e;
+    --s-modified: #e0a34e;
+    --s-deleted: #ef7b70;
+    --s-renamed: #6fa8ec;
+    --s-copied: #6fb7c9;
+    --s-typechange: #b18ae8;
+    --s-unmerged: #ff6b60;
+    --s-untracked: #b9c95c;
     --row-line: 1px solid #2b3036;
   }
 }
@@ -510,6 +529,13 @@ select {
 .frow:hover {
   background: var(--panel-head);
 }
+.frow[draggable='true'] {
+  /* Rows are dragged out onto other applications, so say so on hover. */
+  cursor: grab;
+}
+.frow[draggable='true']:active {
+  cursor: grabbing;
+}
 .frow.selected {
   background: var(--selected);
   color: var(--selected-text);
@@ -531,28 +557,93 @@ select {
   background: #888;
 }
 .status-added {
-  background: #2e9e4f;
+  background: var(--s-added);
 }
 .status-modified {
-  background: #d98324;
+  background: var(--s-modified);
 }
 .status-deleted {
-  background: #c0392b;
+  background: var(--s-deleted);
 }
 .status-renamed {
-  background: #3f7fd4;
+  background: var(--s-renamed);
 }
 .status-copied {
-  background: #4a90a4;
+  background: var(--s-copied);
 }
 .status-typechange {
-  background: #8e5bd0;
+  background: var(--s-typechange);
 }
 .status-unmerged {
-  background: #b3261e;
+  background: var(--s-unmerged);
 }
 .status-untracked {
-  background: #7a8b1f;
+  background: var(--s-untracked);
+}
+/* Neither of these is a change, so neither gets a filled badge: an all-files
+   listing is mostly clean rows, and a wall of grey squares is only noise. */
+.status-clean,
+.status-ignored,
+.status-unknown {
+  background: none;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.frow.selected .status-clean,
+.frow.selected .status-ignored,
+.frow.selected .status-unknown {
+  color: inherit;
+}
+
+/* --- colour hints, the way an editor's project pane tints a file name --- */
+
+.f-added .fname {
+  color: var(--s-added);
+}
+.f-untracked .fname {
+  color: var(--s-untracked);
+}
+.f-modified .fname {
+  color: var(--s-modified);
+}
+.f-typechange .fname {
+  color: var(--s-typechange);
+}
+.f-deleted .fname {
+  color: var(--s-deleted);
+  text-decoration: line-through;
+}
+.f-renamed .fname {
+  color: var(--s-renamed);
+}
+.f-copied .fname {
+  color: var(--s-copied);
+}
+.f-unmerged .fname {
+  color: var(--s-unmerged);
+  font-weight: 700;
+}
+/* A clean file is the baseline the tinted ones are read against, so it keeps
+   the plain text colour and only loses its bold. */
+.f-clean .fname {
+  font-weight: 400;
+}
+/* Ignored files, and the directories holding nothing else, recede rather than
+   take a colour of their own: they are context, not content. */
+.f-ignored,
+.drow.dir-ignored {
+  opacity: 0.45;
+}
+.f-ignored .fname {
+  font-weight: 400;
+}
+/* Selection wins over every hint, or the highlighted row becomes unreadable. */
+.frow.selected .fname,
+.frow.selected .dname {
+  color: var(--selected-text);
+}
+.frow.selected.f-ignored {
+  opacity: 1;
 }
 .fpath {
   flex: 1;

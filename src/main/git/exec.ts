@@ -16,6 +16,7 @@ export const ALLOWED_SUBCOMMANDS = Object.freeze([
   'for-each-ref',
   'hash-object',
   'log',
+  'ls-files',
   'merge-base',
   'rev-list',
   'rev-parse',

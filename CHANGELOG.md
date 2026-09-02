@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **An all-files scope in the changed-files panel**, the way an editor's project pane lists a
+  project. **Changed** / **All** in the panel header switches between the files this comparison
+  touched and every file in the working tree — tracked, untracked, and, behind the **!** button,
+  the ones `.gitignore` excludes. In the All scope the list is a picture of the disk, so its
+  statuses come from `git status` and its diffs are working-tree diffs; a file the working tree
+  has not touched is shown as its own contents rather than as "no changes". The history selection
+  is left alone and still drives the graph and the commit details. Ignored files are the first
+  thing dropped at the 20,000-file ceiling, so turning them on cannot push a real file out of
+  view. The scope and the ignored toggle are persisted with the other panel preferences.
+- **Colour hints on file rows.** Each status now tints the file name as well as its badge —
+  modified amber, added green, untracked olive, deleted red and struck through, renamed blue,
+  conflicted red and bold — so an uncommitted change is visible without reading the letter.
+  Ignored files, and directories holding nothing but ignored files, fade instead.
+- **Dragging a file row out of the panel.** The main process turns the drag into an OS file drag,
+  so dropping it on a terminal pastes that file's path and every other application receives it as
+  the file it is; `text/plain` and `text/uri-list` carry the same absolute path for targets that
+  never see that hand-over. Nothing is copied, moved or written, and the path is checked against
+  the repository root before it leaves, exactly as opening is.
 - **Any panel but the diff can be hidden.** Each panel's header carries an × that puts it away;
   the title bar carries a toggle per panel, and **View** the same four as checkboxes, with
   `Ctrl/Cmd+B` for Branches and `Ctrl/Cmd+1` / `2` / `3` for History, Changed files and Details.

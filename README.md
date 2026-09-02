@@ -131,7 +131,10 @@ this was developed and packaged on.
 | `Ctrl/Cmd+Click` a selected row | Removes it from the selection |
 | Click, plain | Collapses back to a single selection |
 | `↑` / `↓` | Move the selection |
-| **Flat** / **Tree** in the changed-files header | Switch between one row per file and a directory tree |
+| **Changed** / **All** in the files header | List only what this comparison touched, or every file in the working tree |
+| The **!** button, in the All scope | Also list the files `.gitignore` excludes |
+| **Flat** / **Tree** in the files header | Switch between one row per file and a directory tree |
+| Drag a file row onto a terminal | Pastes that file's path; onto anything else, it is an ordinary file drag |
 | Select an image, video or sound file | Both sides are previewed in the diff panel instead of a byte count |
 | Double-click a file row | Opens the working-tree file in your desktop's default application |
 | Click a folder row | Fold it shut; the header's ⊟ / ⊞ folds or opens all of them |
@@ -188,6 +191,44 @@ it was selected and the tree becomes clean, the selection falls back to `HEAD`.
 detached `HEAD`, or a branch behind another, the top row is not where you are.
 
 ### The changed-file list
+
+**Two scopes: what changed, and what is there.** The default list answers "what does this
+comparison touch", which is the question a history viewer exists to answer. **All** answers the
+other one — "what is in this project" — the way an editor's project pane does, listing every
+tracked file, every untracked one, and, behind the **!** button, the ones `.gitignore` excludes.
+The two are one panel, one tree builder and one diff request path rather than two half-wired
+ones: an all-files row carries whatever status `git status` gave it, and a file that differs
+from nothing carries `clean`, which no comparison ever produces.
+
+**The All scope is a picture of the disk, so its diffs are working-tree diffs.** Its statuses
+come from `git status`, so they describe the file as it is now; showing a row marked *modified*
+against a commit from last March would be the row and the diff panel disagreeing about what they
+mean. The panel header says so — the diff names *the working tree, as it is on disk* rather than
+a comparison — and the history selection is left alone, still driving the graph and the commit
+details. A file the working tree has not touched is not "no changes": it is shown as its own
+contents, every line as context, because that is the useful answer to a click in a project pane.
+
+**Ignored files are opt-in, and are the first thing dropped.** A working tree with
+`node_modules` in it is a quarter of a million files, so they are behind a button; and when the
+20,000-file ceiling bites they are cut before anything real is, so turning them on can never
+push a file you were looking for out of view. On screen they recede rather than take a colour —
+as does a directory holding nothing else, so `node_modules` fades whole instead of sitting bright
+above a thousand grey children.
+
+**Colour says what git says.** Each status has one colour, used for both the badge and the file
+name, so a row reads the same whichever half the eye lands on first: modified amber, added green,
+untracked olive, deleted red and struck through, renamed blue, conflicted red and bold. A clean
+file is the baseline the rest are read against, so it keeps the plain text colour and only loses
+its bold. Selection overrides all of it, because a tinted name on the selection bar is not
+legible.
+
+**Rows drag out as files.** Reading a diff and then wanting to *do* something with that file in a
+terminal is a path retyped by hand, so the row hands it over: the main process turns the drag
+into an OS file drag, which is what makes a terminal paste the path on drop and every other
+application treat it as the file it is. `text/plain` and `text/uri-list` carry the same absolute
+path for targets that never see that hand-over. It is still only a drag — nothing is copied,
+moved or written by this application — and the path is checked against the repository root
+before it leaves, exactly as opening is. A file that is not on disk is not draggable.
 
 **Two layouts, because neither is right for every change.** The flat list is exactly what Git
 reported, in Git's order, and it is the better one for a commit touching five files — the full

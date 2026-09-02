@@ -122,3 +122,16 @@ describe('output decoding', () => {
     expect(result.text.startsWith('a')).toBe(true)
   })
 })
+
+describe('the all-files listing runs only reads', () => {
+  const invocations = [
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    ['ls-files', '-z', '--others', '--ignored', '--exclude-standard'],
+    ['diff', '--numstat', '-z', '--no-color', 'HEAD']
+  ]
+  for (const args of invocations) {
+    it(`allows ${args.join(' ')}`, () => {
+      expect(() => assertReadOnly(args)).not.toThrow()
+    })
+  }
+})
