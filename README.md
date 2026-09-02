@@ -134,7 +134,7 @@ this was developed and packaged on.
 | **Changed** / **All** in the files header | List only what this comparison touched, or every file in the working tree |
 | The **!** button, in the All scope | Also list the files `.gitignore` excludes |
 | **Flat** / **Tree** in the files header | Switch between one row per file and a directory tree |
-| Drag a file row onto a terminal | Pastes that file's path; onto anything else, it is an ordinary file drag |
+| Drag a file or folder row onto a terminal | Pastes that path; onto anything else, it is an ordinary file drag |
 | Select an image, video or sound file | Both sides are previewed in the diff panel instead of a byte count |
 | Double-click a file row | Opens the working-tree file in your desktop's default application |
 | Click a folder row | Fold it shut; the header's ⊟ / ⊞ folds or opens all of them |
@@ -228,7 +228,10 @@ into an OS file drag, which is what makes a terminal paste the path on drop and 
 application treat it as the file it is. `text/plain` and `text/uri-list` carry the same absolute
 path for targets that never see that hand-over. It is still only a drag — nothing is copied,
 moved or written by this application — and the path is checked against the repository root
-before it leaves, exactly as opening is. A file that is not on disk is not draggable.
+before it leaves, exactly as opening is. A file that is not on disk is not draggable. Folder
+rows drag too: folding happens on mouse-down and a drag begins after it, so the two gestures do
+not compete. Whether a *drop* is accepted is up to the receiving application; terminals that
+take file drops paste the path, and ones that do not will ignore it.
 
 **Two layouts, because neither is right for every change.** The flat list is exactly what Git
 reported, in Git's order, and it is the better one for a commit touching five files — the full

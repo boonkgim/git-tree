@@ -1235,3 +1235,13 @@ select {
 .media-pane audio {
   width: 100%;
 }
+
+/* A file list that failed to load is not a dead end: the fetch rules refuse to
+   run while an error is set, so the panel has to offer the way back itself. */
+.files-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+}

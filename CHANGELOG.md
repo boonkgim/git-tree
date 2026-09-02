@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A git that could not be started reached the panels as a bare `spawn ENOTCONN`.** `spawn`
+  reports a failure to start two ways: asynchronously on the child's `error` event, and
+  synchronously out of the call itself when the stdio pipes cannot be set up, which is what a
+  machine short of file handles does. Only the first was being wrapped, so the second arrived in
+  the UI as node's own message, with no binary name and nothing to act on. Both now become a
+  proper error, and the out-of-file-handles codes say what actually went wrong.
+- **A file list that failed to load was a dead end.** The fetch rules deliberately will not run
+  while an error is set, and in the all-files scope nothing else was going to clear it, so the
+  panel stayed empty until the whole repository was refreshed. The error state now carries a
+  **Try again**.
+
 ### Added
 
 - **An all-files scope in the changed-files panel**, the way an editor's project pane lists a
@@ -25,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dragging a file row out of the panel.** The main process turns the drag into an OS file drag,
   so dropping it on a terminal pastes that file's path and every other application receives it as
   the file it is; `text/plain` and `text/uri-list` carry the same absolute path for targets that
-  never see that hand-over. Nothing is copied, moved or written, and the path is checked against
+  never see that hand-over. Folder rows drag out the same way. Nothing is copied, moved or written, and the path is checked against
   the repository root before it leaves, exactly as opening is.
 - **Any panel but the diff can be hidden.** Each panel's header carries an × that puts it away;
   the title bar carries a toggle per panel, and **View** the same four as checkboxes, with

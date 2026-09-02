@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import type { GitTreeError } from '@shared/types'
 
 /**
@@ -199,6 +199,36 @@ export async function runGit(
 }
 
 /** What `runGitBuffer` resolves with: the same run, with stdout left as bytes. */
+/**
+ * Turns a failure to *start* git into something the UI can show.
+ *
+ * `spawn` reports these two ways: asynchronously on the child's `error` event
+ * when the executable cannot be run, and synchronously — straight out of the
+ * call — when the stdio pipes themselves cannot be set up, which is what a
+ * machine short of file descriptors does. Both land here so that neither can
+ * reach a panel as a bare `spawn ENOTCONN`.
+ *
+ * Exported for tests: the synchronous half cannot be reached through `runGit`,
+ * which builds the spawn options itself, so the mapping is checked directly.
+ */
+export function spawnError(e: NodeJS.ErrnoException): GitError {
+  if (e.code === 'ENOENT') {
+    return new GitError({
+      code: 'GIT_MISSING',
+      message: 'Could not find the "git" command.',
+      detail: 'Install Git and make sure it is on your PATH, then reopen the repository.'
+    })
+  }
+  return new GitError({
+    code: 'GIT_FAILED',
+    message: `Could not run git: ${e.message}`,
+    detail:
+      e.code === 'EMFILE' || e.code === 'ENFILE' || e.code === 'ENOTCONN'
+        ? 'The machine ran out of file handles to start the process with. Closing some applications and trying again usually clears it.'
+        : undefined
+  })
+}
+
 export interface RawResult {
   stdout: Buffer
   stderr: string
@@ -225,13 +255,23 @@ export function runGitBuffer(
   const full = [...FORCED_CONFIG, ...args]
 
   return new Promise<RawResult>((resolve, reject) => {
-    const child = spawn(gitBinary, full, {
-      cwd,
-      env: childEnv(),
-      shell: false,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
+    // `spawn` can throw here rather than emit: creating the stdio pipes is done
+    // synchronously, so a machine out of file handles fails before there is a
+    // child to attach a listener to. Inside a promise executor that would
+    // reject with the raw `spawn ENOTCONN`, which says nothing to anyone.
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = spawn(gitBinary, full, {
+        cwd,
+        env: childEnv(),
+        shell: false,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+    } catch (e) {
+      reject(spawnError(e as NodeJS.ErrnoException))
+      return
+    }
 
     const out: Buffer[] = []
     const err: Buffer[] = []
@@ -255,17 +295,7 @@ export function runGitBuffer(
       if (settled) return
       settled = true
       clearTimeout(timer)
-      reject(
-        new GitError(
-          e.code === 'ENOENT'
-            ? {
-                code: 'GIT_MISSING',
-                message: 'Could not find the "git" command.',
-                detail: 'Install Git and make sure it is on your PATH, then reopen the repository.'
-              }
-            : { code: 'GIT_FAILED', message: `Could not run git: ${e.message}` }
-        )
-      )
+      reject(spawnError(e))
     })
 
     child.stdout.on('data', (chunk: Buffer) => {
@@ -316,13 +346,17 @@ export function runGitBuffer(
  */
 export function spawnGit(cwd: string, args: string[]) {
   assertReadOnly(args)
-  return spawn(gitBinary, [...FORCED_CONFIG, ...args], {
-    cwd,
-    env: childEnv(),
-    shell: false,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
+  try {
+    return spawn(gitBinary, [...FORCED_CONFIG, ...args], {
+      cwd,
+      env: childEnv(),
+      shell: false,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+  } catch (e) {
+    throw spawnError(e as NodeJS.ErrnoException)
+  }
 }
 
 /** Normalises anything thrown inside the main process into a `GitTreeError`. */

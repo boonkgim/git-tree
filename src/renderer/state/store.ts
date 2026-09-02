@@ -183,6 +183,7 @@ type Action =
   | { type: 'working-files'; files: WorkingFilesResult }
   | { type: 'working-files-error'; error: GitTreeError }
   | { type: 'working-files-stale' }
+  | { type: 'files-retry' }
   | { type: 'refs'; refs: RefEntry[] }
   | { type: 'refs-error'; error: GitTreeError }
   | { type: 'visibility'; visibility: PanelVisibility; focusRestore: PanelVisibility | null }
@@ -456,6 +457,11 @@ function reducer(state: State, action: Action): State {
       }
     }
 
+    case 'files-retry':
+      // Same shape as the stale case: dropping the error is what lets the
+      // comparison's fetch rule run again.
+      return { ...state, filesError: null, files: null }
+
     case 'working-files-stale':
       // Dropping the list is what makes it be read again; see the fetch rule.
       return { ...state, workingFiles: null, workingFilesError: null }
@@ -540,6 +546,8 @@ export interface AppApi {
   setFilesView: (view: FilesView) => void
   /** Switches the panel between this comparison's files and every file on disk. */
   setFilesScope: (scope: FilesScope) => void
+  /** Reads the file list again after one that failed. */
+  retryFiles: () => void
   /** In the all-files scope, whether `.gitignore`d files are listed too. */
   setShowIgnored: (show: boolean) => void
   /**
@@ -1116,6 +1124,15 @@ export function useGitTree(): AppApi {
     void window.gitTree.setSettings({ filesScope: scope })
   }, [])
 
+  // A failed read leaves an error behind, and the fetch rules deliberately will
+  // not run while one is set; without this the panel would be a dead end until
+  // the whole repository was refreshed. Clearing the error is what re-runs them.
+  const retryFiles = useCallback(() => {
+    const s = stateRef.current
+    if (s.filesScope === 'all') dispatch({ type: 'working-files-stale' })
+    else dispatch({ type: 'files-retry' })
+  }, [])
+
   const setShowIgnored = useCallback((show: boolean) => {
     dispatch({ type: 'show-ignored', show })
     void window.gitTree.setSettings({ showIgnored: show })
@@ -1173,6 +1190,7 @@ export function useGitTree(): AppApi {
     setDiffOptions,
     setFilesView,
     setFilesScope,
+    retryFiles,
     setShowIgnored,
     startDrag,
     absolutePath,

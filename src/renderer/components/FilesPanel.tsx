@@ -154,7 +154,9 @@ function DirRow({
   ignored,
   fileCount,
   onToggle,
-  onOpen
+  onOpen,
+  onDrag,
+  absolutePath
 }: {
   path: string
   label: string
@@ -164,15 +166,28 @@ function DirRow({
   fileCount: number
   onToggle: () => void
   onOpen: (path: string) => void
+  onDrag: (path: string) => void
+  absolutePath: (path: string) => string
 }): JSX.Element {
   return (
     <div
       className={`frow drow${collapsed ? ' collapsed' : ''}${ignored ? ' dir-ignored' : ''}`}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
       onMouseDown={onToggle}
+      // A directory is a path like any other, so it drags out like any other.
+      // Folding happens on mouse-down and dragging begins after it, so the two
+      // gestures do not compete: a drag leaves the row folded as it found it.
+      draggable
+      onDragStart={(event) => {
+        const absolute = absolutePath(path)
+        event.dataTransfer.effectAllowed = 'copy'
+        event.dataTransfer.setData('text/plain', absolute)
+        event.dataTransfer.setData('text/uri-list', `file://${encodeURI(absolute)}`)
+        onDrag(path)
+      }}
       title={`${collapsed ? `Expand ${label}` : `Collapse ${label}`}${
         ignored ? '\nEverything in here is ignored by .gitignore' : ''
-      }`}
+      }\nDrag onto a terminal to paste its path`}
     >
       <span className="twisty">{collapsed ? '▸' : '▾'}</span>
       <span className="dname">{label}</span>
@@ -213,7 +228,8 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
     setShowIgnored,
     openInWorkingTree,
     startDrag,
-    absolutePath
+    absolutePath,
+    retryFiles
   } = api
   const all = state.filesScope === 'all'
   const files = activeFiles(state)
@@ -343,6 +359,8 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
             fileCount={row.fileCount}
             onToggle={() => toggleDir(row.path)}
             onOpen={openInWorkingTree}
+            onDrag={startDrag}
+            absolutePath={absolutePath}
           />
         )
       }
@@ -365,7 +383,13 @@ export function FilesPanel({ api }: { api: AppApi }): JSX.Element {
   )
 
   const empty = error ? (
-    <p className="error-text">{error.message}</p>
+    <div className="files-error">
+      <p className="error-text">{error.message}</p>
+      {error.detail && <p className="dim small">{error.detail}</p>}
+      <button type="button" onClick={retryFiles}>
+        Try again
+      </button>
+    </div>
   ) : loading ? (
     <p className="dim">Reading…</p>
   ) : all ? (
