@@ -35,7 +35,10 @@ function RefChip({ label }: { label: RefLabel }): JSX.Element {
  */
 export function HistoryPanel({ api }: { api: AppApi }): JSX.Element {
   const { state, rowAt, rowCount, hasWorkingRow, isSelected, isAnchor, click, ensureLoaded } = api
-  const graphRows = useGraphRows(state.commits, state.epoch)
+  // The working node is only in the graph when it is in the list, and it hangs
+  // off HEAD so the dashed line reaches the commit that is actually checked out.
+  const workingHead = hasWorkingRow ? (state.repo?.head ?? null) : null
+  const graphRows = useGraphRows(state.commits, state.epoch, workingHead)
   const listRef = useRef<HTMLDivElement>(null)
 
   const width = useMemo(() => {
@@ -102,9 +105,7 @@ export function HistoryPanel({ api }: { api: AppApi }): JSX.Element {
           >
             <div className="hgraph" style={{ width }}>
               <GraphCell
-                row={null}
-                working
-                workingLane={graphRows[0]?.lane ?? 0}
+                row={workingHead ? (graphRows[0] ?? null) : null}
                 height={HISTORY_ROW_HEIGHT}
                 width={width}
                 selected={selected}
@@ -124,7 +125,9 @@ export function HistoryPanel({ api }: { api: AppApi }): JSX.Element {
       const commit = row.commit
       const node: HistoryNode = { kind: 'commit', sha: commit.sha }
       const selected = isSelected(node)
-      const graphIndex = hasWorkingRow ? index - 1 : index
+      // Rows and graph rows line up one-for-one, working node included, unless
+      // HEAD is unknown and the working node was left out of the walk.
+      const graphIndex = hasWorkingRow && !workingHead ? index - 1 : index
       return (
         <div
           key={commit.sha}
@@ -156,7 +159,17 @@ export function HistoryPanel({ api }: { api: AppApi }): JSX.Element {
         </div>
       )
     },
-    [rowAt, isSelected, isAnchor, onRowClick, width, graphRows, hasWorkingRow, state.working]
+    [
+      rowAt,
+      isSelected,
+      isAnchor,
+      onRowClick,
+      width,
+      graphRows,
+      hasWorkingRow,
+      workingHead,
+      state.working
+    ]
   )
 
   return (

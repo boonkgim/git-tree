@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { assignLanes, createLaneState, laneColour, type GraphInput } from '../src/shared/graph'
+import {
+  assignLanes,
+  createLaneState,
+  laneColour,
+  workingInput,
+  type GraphInput
+} from '../src/shared/graph'
 
 /** Rows in `--date-order`: a commit always appears before its parents. */
 function lanes(commits: GraphInput[]): number[] {
@@ -112,6 +118,76 @@ describe('assignLanes', () => {
 
   it('produces no rows for an empty history', () => {
     expect(assignLanes([], createLaneState())).toEqual([])
+  })
+})
+
+describe('the working-tree node', () => {
+  it('branches off HEAD rather than off the newest commit', () => {
+    //  working        feature
+    //        \        /
+    //         head (checked out, but not the top of --date-order)
+    const rows = assignLanes(
+      [
+        workingInput('head'),
+        { sha: 'feature', parents: ['base'] },
+        { sha: 'head', parents: ['base'] },
+        { sha: 'base', parents: [] }
+      ],
+      createLaneState()
+    )
+    const [working, feature, head] = rows
+    expect(working.synthetic).toBe(true)
+    // The working node holds a lane of its own down to HEAD; the unrelated tip
+    // above HEAD is pushed aside instead of being joined to.
+    expect(feature.lane).not.toBe(working.lane)
+    expect(head.lane).toBe(working.lane)
+    expect(head.incoming).toBe(true)
+    expect(head.incomingDashed).toBe(true)
+  })
+
+  it('draws the whole stretch down to HEAD dashed, and nothing below it', () => {
+    const rows = assignLanes(
+      [
+        workingInput('head'),
+        { sha: 'feature', parents: ['base'] },
+        { sha: 'head', parents: ['base'] },
+        { sha: 'base', parents: [] }
+      ],
+      createLaneState()
+    )
+    const [working, feature, head] = rows
+    // The working node's edge, and its continuation past the unrelated tip.
+    expect(working.edges.every((e) => e.dashed)).toBe(true)
+    expect(feature.edges.filter((e) => e.dashed)).toHaveLength(1)
+    // Below HEAD the lane carries real history again.
+    expect(head.edges.some((e) => e.dashed)).toBe(false)
+  })
+
+  it('keeps a real branch built on HEAD solid', () => {
+    //  working   tip
+    //        \   |
+    //         head
+    const rows = assignLanes(
+      [
+        workingInput('head'),
+        { sha: 'tip', parents: ['head'] },
+        { sha: 'head', parents: [] }
+      ],
+      createLaneState()
+    )
+    const [, tip, head] = rows
+    // `tip` commits into the same lane, so from there down it is history.
+    expect(tip.edges.every((e) => !e.dashed)).toBe(true)
+    expect(head.incoming).toBe(true)
+    expect(head.incomingDashed).toBe(false)
+  })
+
+  it('marks only the working node as synthetic', () => {
+    const rows = assignLanes(
+      [workingInput('head'), { sha: 'head', parents: [] }],
+      createLaneState()
+    )
+    expect(rows.map((r) => r.synthetic)).toEqual([true, false])
   })
 })
 

@@ -14,6 +14,20 @@
 export interface GraphInput {
   sha: string
   parents: string[]
+  /**
+   * The working-tree node rather than a real commit. It is fed through the
+   * same walk so its line branches off the commit it sits on — HEAD — instead
+   * of whatever happens to be at the top of the log.
+   */
+  synthetic?: boolean
+}
+
+/** Sha used for the synthetic working-tree node; never a real object name. */
+export const WORKING_SHA = ':working:'
+
+/** The working-tree node as a graph input, parented on HEAD. */
+export function workingInput(head: string): GraphInput {
+  return { sha: WORKING_SHA, parents: [head], synthetic: true }
 }
 
 /** An edge passing through a row, drawn as a vertical or diagonal line. */
@@ -24,6 +38,8 @@ export interface GraphEdge {
   toLane: number
   /** Colour index, tied to the lane the edge belongs to. */
   colour: number
+  /** Drawn dashed: this stretch of lane is the working tree, not history. */
+  dashed: boolean
 }
 
 export interface GraphRow {
@@ -40,6 +56,10 @@ export interface GraphRow {
    * child, so drawing a line up out of it would invent an edge.
    */
   incoming: boolean
+  /** The incoming line is the working-tree connector, so it is dashed. */
+  incomingDashed: boolean
+  /** This row is the working-tree node, drawn hollow. */
+  synthetic: boolean
 }
 
 /** Mutable state carried between incremental calls. */
@@ -50,10 +70,15 @@ export interface LaneState {
   colours: number[]
   /** Next colour to hand out. */
   nextColour: number
+  /**
+   * Lanes whose current occupant is still the working-tree connector, i.e. the
+   * stretch between the working node and the commit it is waiting for.
+   */
+  dashed: Set<number>
 }
 
 export function createLaneState(): LaneState {
-  return { lanes: [], colours: [], nextColour: 0 }
+  return { lanes: [], colours: [], nextColour: 0, dashed: new Set() }
 }
 
 function claimLane(state: LaneState, sha: string): number {
@@ -63,6 +88,7 @@ function claimLane(state: LaneState, sha: string): number {
   if (free !== -1) {
     state.lanes[free] = sha
     state.colours[free] = state.nextColour++
+    state.dashed.delete(free)
     return free
   }
   state.lanes.push(sha)
@@ -73,6 +99,7 @@ function claimLane(state: LaneState, sha: string): number {
 /** Drops trailing free lanes so the gutter does not grow forever. */
 function trim(state: LaneState): void {
   while (state.lanes.length > 0 && state.lanes[state.lanes.length - 1] === null) {
+    state.dashed.delete(state.lanes.length - 1)
     state.lanes.pop()
     state.colours.pop()
   }
@@ -91,10 +118,14 @@ export function assignLanes(commits: readonly GraphInput[], state: LaneState): G
     const incoming = state.lanes.indexOf(commit.sha) !== -1
     const lane = claimLane(state, commit.sha)
     const colour = state.colours[lane]
+    // A dot lands on the lane, so the working connector stops here: the line
+    // above it is still dashed, everything below is real history.
+    const incomingDashed = incoming && state.dashed.delete(lane)
 
     // Lanes above this row, before the commit reassigns anything.
     const before = state.lanes.slice()
     const beforeColours = state.colours.slice()
+    const beforeDashed = new Set(state.dashed)
 
     if (commit.parents.length === 0) {
       state.lanes[lane] = null
@@ -110,6 +141,16 @@ export function assignLanes(commits: readonly GraphInput[], state: LaneState): G
         state.lanes[lane] = first
       }
       for (const parent of rest) claimLane(state, parent)
+      // The working node marks the lanes it hands a commit to, so the stretch
+      // down to that commit reads as pending rather than as history. A real
+      // commit feeding the same lane clears the mark: from there down the lane
+      // carries a committed branch, which is drawn solid.
+      for (const parent of commit.parents) {
+        const parentLane = state.lanes.indexOf(parent)
+        if (parentLane === -1) continue
+        if (commit.synthetic) state.dashed.add(parentLane)
+        else state.dashed.delete(parentLane)
+      }
     }
 
     trim(state)
@@ -120,12 +161,24 @@ export function assignLanes(commits: readonly GraphInput[], state: LaneState): G
       const expected = before[i]
       if (expected === null || i === lane) continue
       const below = state.lanes.indexOf(expected)
-      if (below !== -1) edges.push({ fromLane: i, toLane: below, colour: beforeColours[i] })
+      if (below !== -1)
+        edges.push({
+          fromLane: i,
+          toLane: below,
+          colour: beforeColours[i],
+          dashed: beforeDashed.has(i) && state.dashed.has(below)
+        })
     }
     // The commit's own outgoing edges, one per parent.
     for (const parent of commit.parents) {
       const below = state.lanes.indexOf(parent)
-      if (below !== -1) edges.push({ fromLane: lane, toLane: below, colour: state.colours[below] })
+      if (below !== -1)
+        edges.push({
+          fromLane: lane,
+          toLane: below,
+          colour: state.colours[below],
+          dashed: state.dashed.has(below)
+        })
     }
 
     rows.push({
@@ -133,6 +186,8 @@ export function assignLanes(commits: readonly GraphInput[], state: LaneState): G
       colour,
       edges,
       incoming,
+      incomingDashed,
+      synthetic: commit.synthetic === true,
       width: Math.max(state.lanes.length, before.length, lane + 1)
     })
   }
